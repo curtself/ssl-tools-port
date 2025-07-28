@@ -238,7 +238,7 @@ func (c *CertificateService) FinishCSR(opts options.FinishOptions) (*models.PFXd
 
 	// Step 9: Encode to PFX
 	pfxData, err := encodeToPFX(chain, privKey, opts.Password)
-	fmt.Printf("Using password of [%s]\n", opts.Password)
+	//fmt.Printf("Using password of [%s]\n", opts.Password)
 	if err != nil {
 		dto.CreateMessage = fmt.Sprintf("Failed to create PFX: %v", err)
 		dto.OpCode = 1007
@@ -396,14 +396,25 @@ func (c *CertificateService) GetInfo(opts options.InfoOptions) error {
 					}
 				} else {
 					fmt.Println(fmt.Errorf("reading certificates failed: %w", err))
+					return err
 				}
 			case certformat.PEM:
 				fmt.Println("PEM certificate file found: ", path)
 				certs, err := loadPemCertsFromFile(path)
 				if err == nil {
-					for _, cert := range certs {
-						certinfo.LogCertInfo(cert)
+					if !opts.ShortSummary {
+						for _, cert := range certs {
+							certinfo.LogCertInfo(cert)
+						}
 					}
+					fmt.Println(strings.Repeat("-", 92))
+					fmt.Println("Chain summary")
+					for i, cert := range certs {
+						certinfo.LogCertSummary(cert,i)
+					}
+				} else {
+					fmt.Println(fmt.Errorf("reading certificates failed: %W", err))
+					return err
 				}
 			}
 		}

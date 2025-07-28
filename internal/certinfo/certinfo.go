@@ -22,7 +22,7 @@ func LogCertInfo(cert *x509.Certificate) {
 	if cert.Subject.CommonName != "" {
 		log.Printf("Simple Name: %s", cert.Subject.CommonName)
 	}
-	log.Printf("Date: %s - %s", cert.NotBefore.Format("2006-01-02"), cert.NotAfter.Format("2006-01-02"))
+	log.Printf("Date: %s - %s", cert.NotBefore.Local().Format("01/02/2006 15:04:05"), cert.NotAfter.Local().Format("01/02/2006 15:04:05"))
 	log.Printf("Issuer: %s", cert.Issuer.CommonName)
 	log.Printf("Issuer DN: %s", cert.Issuer.String())
 	log.Printf("Serial Number: %s", cert.SerialNumber.String())

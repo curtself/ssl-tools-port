@@ -22,11 +22,7 @@ var finishCmd = &cobra.Command{
 		if err := finishOpts.Validate(); err != nil {
 			return err
 		}
-		// hard code chain option for now
-		//finishOpts.Chain = true 
-		// hard code include root option for now
-		//finishOpts.IncludeRoot = true
-		fmt.Printf("Arguments given %+v\n",finishOpts)
+		//fmt.Printf("Arguments given %+v\n",finishOpts)
 		svc := certsvc.New()
 		result, err := svc.FinishCSR(finishOpts)
 		if err != nil {
@@ -49,10 +45,11 @@ func init() {
 	finishCmd.Flags().StringVarP(&finishOpts.PfxFile, "pfx", "p", "", "Pfx file path (optional)")
 	finishCmd.Flags().StringVar(&finishOpts.Password, "password", "", "Password for PFX file (required)")
 	finishCmd.Flags().BoolVar(&finishOpts.Chain, "chain", false, "Include the certificate chain (optional)")
-	finishCmd.Flags().BoolVar(&finishOpts.IncludeRoot, "include-root", false, "Include the root certificate(s) in the chain")
+	finishCmd.Flags().BoolVar(&finishOpts.IncludeRoot, "include-root", false, "Include the root certificate(s) in the chain (optional)")
 	finishCmd.MarkFlagRequired("certificate")
 	finishCmd.MarkFlagRequired("key")
 	// password is checked via the Validate() function. It can come from cli or environment variable
+	// additionally, the flag --include-root can only be enabled if --chain is enabled
 	rootCmd.AddCommand(finishCmd)
 
 

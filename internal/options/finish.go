@@ -3,7 +3,6 @@ package options
 import (
 	"errors"
 	"os"
-	"fmt"
 )
 type FinishOptions struct {
     Certificate 	string
@@ -22,11 +21,13 @@ func (opts* FinishOptions) Validate() error {
 		return errors.New("Key file (-k) is required")
 	}
 	if opts.Password == "" {
-		fmt.Printf("Found environment variable of %s\n", os.Getenv("sslpass"))
 		if os.Getenv("sslpass") == "" {
 			return errors.New("Password is not set")
 		}
 		opts.Password = os.Getenv("sslpass")
+	}
+	if opts.IncludeRoot && !opts.Chain {
+		return errors.New("--chain flag must be enabled to use --include-root flag")
 	}
 	return nil
 }

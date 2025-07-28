@@ -50,11 +50,11 @@ var createCmd = &cobra.Command{
 }
 
 func init() {
-    createCmd.Flags().StringVarP(&createOpts.CommonName, "common-name", "c", "", "Common name (required)")
-    createCmd.Flags().StringArrayVarP(&createOpts.SANs, "san", "s", []string{}, "Subject Alternative Names")
-    createCmd.Flags().IntVarP(&createOpts.KeySize, "keysize", "b", 0, "Key size in bits")
-    createCmd.Flags().StringVarP(&createOpts.Key, "key", "k", "", "Optional external key path")
+    createCmd.Flags().StringVarP(&createOpts.CommonName, "cn", "c", "", "Common name (required)")
+    createCmd.Flags().StringArrayVarP(&createOpts.SANs, "san", "s", []string{}, "Subject Alternative Names (optional)")
+    createCmd.Flags().IntVarP(&createOpts.KeySize, "keysize", "b", 0, "Key size in bits (optional)")
+    createCmd.Flags().StringVarP(&createOpts.Key, "key", "k", "", "External key file path (optional)")
 
-    createCmd.MarkFlagRequired("common-name")
+    createCmd.MarkFlagRequired("cn")
 	rootCmd.AddCommand(createCmd)
 }
