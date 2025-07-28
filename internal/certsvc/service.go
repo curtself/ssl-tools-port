@@ -9,12 +9,13 @@ import (
 	"errors"
 	"fmt"
 	"os"
-	"slices"
+	//"slices"
 	"software.sslmate.com/src/go-pkcs12"
 	"ssl-tools/internal/certformat"
 	"ssl-tools/internal/certinfo"
 	"ssl-tools/internal/models"
 	"ssl-tools/internal/options"
+	"ssl-tools/internal/x509extras"
 	"strings"
 )
 
@@ -365,13 +366,12 @@ func loadBinaryCertsFromFile(path string, pass string) ([]*x509.Certificate, err
 	if err != nil {
 		return nil, err
 	}
-	certs := []*x509.Certificate{cert}
-	for _, link := range chain {
-		certs = append(certs, link)
+	certs := append([]*x509.Certificate{cert}, chain...)
+	sorted, err := x509extras.SortCertificateChain(certs)
+	if err != nil {
+		return nil, err
 	}
-	// reverse the order since pkcs12.DecodeChain gives us a reversed list
-	slices.Reverse(certs)
-	return certs, nil
+	return sorted, nil
 }
 
 // info section
