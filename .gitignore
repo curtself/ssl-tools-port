@@ -1,0 +1,17 @@
+obj
+bin
+*.log
+*.pem
+*.key
+*.pfx
+*.cer
+*.csr
+*.srl
+*.crt
+*.zip
+*.der
+chain_details.txt
+*.bin
+tls12handshake_debug.txt
+serverHelloHex.txt
+ssl-tools

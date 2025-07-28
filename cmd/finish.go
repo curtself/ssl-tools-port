@@ -1,0 +1,59 @@
+/*
+Copyright © 2025 Curt Self <curtself.cs@gmail.com>
+
+*/
+package cmd
+
+import (
+	"fmt"
+	"github.com/spf13/cobra"
+	"ssl-tools/internal/options"
+	"ssl-tools/internal/certsvc"
+)
+
+var finishOpts options.FinishOptions
+
+// finishCmd represents the finish command
+var finishCmd = &cobra.Command{
+	Use:   "finish",
+	Short: "Finish a CSR request using a CSR and key file",
+	RunE: func(cmd *cobra.Command, args []string) error {
+		fmt.Println("Running finish verb...")
+		if err := finishOpts.Validate(); err != nil {
+			return err
+		}
+		// hard code chain option for now
+		//finishOpts.Chain = true 
+		// hard code include root option for now
+		//finishOpts.IncludeRoot = true
+		fmt.Printf("Arguments given %+v\n",finishOpts)
+		svc := certsvc.New()
+		result, err := svc.FinishCSR(finishOpts)
+		if err != nil {
+			return fmt.Errorf("PFX creation failed: %w", err)
+		}
+		if finishOpts.PfxFile != "" {
+			result.FileName = finishOpts.PfxFile
+		}
+		//fmt.Printf("Returned the PFXdto as %+v\n", result)
+		if err := svc.SavePFXdto(result); err != nil {
+			return err
+		}
+		return nil
+	},
+}
+
+func init() {
+	finishCmd.Flags().StringVarP(&finishOpts.Certificate, "certificate", "c", "", "Certificate file path (required)")
+	finishCmd.Flags().StringVarP(&finishOpts.Key, "key", "k", "", "Key file path (required)")
+	finishCmd.Flags().StringVarP(&finishOpts.PfxFile, "pfx", "p", "", "Pfx file path (optional)")
+	finishCmd.Flags().StringVar(&finishOpts.Password, "password", "", "Password for PFX file (required)")
+	finishCmd.Flags().BoolVar(&finishOpts.Chain, "chain", false, "Include the certificate chain (optional)")
+	finishCmd.Flags().BoolVar(&finishOpts.IncludeRoot, "include-root", false, "Include the root certificate(s) in the chain")
+	finishCmd.MarkFlagRequired("certificate")
+	finishCmd.MarkFlagRequired("key")
+	// password is checked via the Validate() function. It can come from cli or environment variable
+	rootCmd.AddCommand(finishCmd)
+
+
+}
