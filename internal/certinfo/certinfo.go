@@ -1,8 +1,12 @@
 package certinfo
 
 import (
+	"crypto"
+	"crypto/ecdsa"
+	"crypto/rsa"
+	"crypto/sha1"
 	"crypto/x509"
-	//"encoding/asn1"
+	"encoding/asn1"
 	"encoding/hex"
 	"fmt"
 	"log"
@@ -71,6 +75,132 @@ func LogCertInfo(cert *x509.Certificate) {
 	}
 
 	log.Println()
+}
+
+func LogCsrInfo(csr *x509.CertificateRequest) {
+	log.SetFlags(0)
+	log.Println(strings.Repeat("-", 92))
+	if csr.Subject.CommonName != "" {
+		log.Printf("Simple Name: %s", csr.Subject.CommonName)
+	}
+
+	// Key Size
+	switch pub := csr.PublicKey.(type) {
+	case *rsa.PublicKey:
+		log.Printf("Key Size: %d", pub.N.BitLen())
+	case *ecdsa.PublicKey:
+		log.Printf("Key Size: %d (ECDSA)", pub.Params().BitSize)
+	default:
+		log.Printf("Key Type: %T", pub)
+	}
+	/*
+		skid, err := ComputeSKIDFromPublicKey(csr.PublicKey)
+		if err == nil {
+			log.Printf("SKID: %s", hex.EncodeToString(skid))
+		}
+	*/
+	// Parse Extensions
+	for _, ext := range csr.Extensions {
+		oid := ext.Id.String()
+		extName := getFriendlyName(oid)
+		/*
+		isCritical := ext.Critical
+		if isCritical {
+			extName += " (critical)"
+		}
+		*/
+
+		switch oid {
+		/*
+		 */
+		case "2.5.29.14": // SKID
+			var skid []byte
+			_, err := asn1.Unmarshal(ext.Value, &skid)
+			if err == nil {
+				log.Printf("SKID: %s", strings.ToUpper(hex.EncodeToString(skid)))
+			}
+			//log.Printf("SKID%s: %s", criticalSuffix(isCritical), hex.EncodeToString(ext.Value))
+
+		case "2.5.29.17": // SAN
+			log.Printf("%s", extName)
+			for _, dns := range csr.DNSNames {
+				log.Printf("  DNS: %s", dns)
+			}
+
+		case "2.5.29.15": // Key Usage
+			var usage x509.KeyUsage
+			var bitString asn1.BitString
+			if _, err := asn1.Unmarshal(ext.Value, &bitString); err == nil {
+				if bitString.BitLength >= 1 && bitString.At(0) == 1 {
+					usage |= x509.KeyUsageDigitalSignature
+				}
+				if bitString.BitLength >= 2 && bitString.At(1) == 1 {
+					usage |= x509.KeyUsageContentCommitment
+				}
+				if bitString.BitLength >= 3 && bitString.At(2) == 1 {
+					usage |= x509.KeyUsageKeyEncipherment
+				}
+				if bitString.BitLength >= 4 && bitString.At(3) == 1 {
+					usage |= x509.KeyUsageDataEncipherment
+				}
+				if bitString.BitLength >= 5 && bitString.At(4) == 1 {
+					usage |= x509.KeyUsageKeyAgreement
+				}
+				if bitString.BitLength >= 6 && bitString.At(5) == 1 {
+					usage |= x509.KeyUsageCertSign
+				}
+				if bitString.BitLength >= 7 && bitString.At(6) == 1 {
+					usage |= x509.KeyUsageCRLSign
+				}
+				if bitString.BitLength >= 8 && bitString.At(7) == 1 {
+					usage |= x509.KeyUsageEncipherOnly
+				}
+				if bitString.BitLength >= 9 && bitString.At(8) == 1 {
+					usage |= x509.KeyUsageDecipherOnly
+				}
+				log.Printf("%s: %s", extName, keyUsageString(usage))
+			} else {
+				log.Printf("%s: unable to parse Key Usage (%v)", extName, err)
+			}
+
+		case "2.5.29.37": // Extended Key Usage
+			var ekuOIDs []asn1.ObjectIdentifier
+			if _, err := asn1.Unmarshal(ext.Value, &ekuOIDs); err == nil {
+				// Convert OIDs to ExtKeyUsage constants
+				var ekuNames []string
+				for _, oid := range ekuOIDs {
+					ekuNames = append(ekuNames, friendlyExtKeyUsage(oid))
+				}
+				log.Printf("%s: %s", extName, strings.Join(ekuNames, ", "))
+			} else {
+				log.Printf("%s: unable to parse EKU (%v)", extName, err)
+			}
+		}
+	}
+}
+
+func ComputeSKIDFromPublicKey(pubKey crypto.PublicKey) ([]byte, error) {
+	pubBytes, err := x509.MarshalPKIXPublicKey(pubKey)
+	if err != nil {
+		return nil, err
+	}
+	skid := sha1.Sum(pubBytes)
+	return skid[:], nil
+}
+
+func friendlyExtKeyUsage(oid asn1.ObjectIdentifier) string {
+	switch {
+	case oid.Equal([]int{1, 3, 6, 1, 5, 5, 7, 3, 1}):
+		return "ServerAuth"
+	case oid.Equal([]int{1, 3, 6, 1, 5, 5, 7, 3, 2}):
+		return "ClientAuth"
+	case oid.Equal([]int{1, 3, 6, 1, 5, 5, 7, 3, 3}):
+		return "CodeSigning"
+	case oid.Equal([]int{1, 3, 6, 1, 5, 5, 7, 3, 4}):
+		return "EmailProtection"
+	default:
+		return "Unknown EKU: " + oid.String()
+	}
 }
 
 func certFingerprintSHA1(cert *x509.Certificate) []byte {

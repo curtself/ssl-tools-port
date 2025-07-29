@@ -346,6 +346,26 @@ func encodeToPFX(certs []*x509.Certificate, key *rsa.PrivateKey, password string
 	   look at the C# PrintCertInfo method at line 943 for all the data I need
 **/
 
+func loadCsrFromFile(path string) (*x509.CertificateRequest, error) {
+	pemBytes, err := os.ReadFile(path)
+	if err != nil {
+		return nil, err
+	}
+	block,_ := pem.Decode(pemBytes)
+	if block != nil {
+		if block.Type != "CERTIFICATE REQUEST" {
+			fmt.Printf("failed to get CSR, instead got %s\n", block.Type)
+			return nil, errors.New("bad PEM block type") 
+		}
+	} else {
+		return nil, errors.New("could not read PEM data") 
+	}
+	csr, err := x509.ParseCertificateRequest(block.Bytes)
+	if err != nil {
+		return nil, err
+	}
+	return csr, nil
+}
 func loadPemCertsFromFile(path string) ([]*x509.Certificate, error) {
 	certBytes, err := os.ReadFile(path)
 	if err != nil {
@@ -364,7 +384,21 @@ func loadBinaryCertsFromFile(path string, pass string) ([]*x509.Certificate, err
 	}
 	_, cert, chain, err := pkcs12.DecodeChain(certBytes, pass)
 	if err != nil {
-		return nil, err
+		//fmt.Println("TRIED TO DECODE A PKCS12 FILE AND FAILED... NEED TO TRY NORMAL BINARY CERT")
+		// try to load as DER certs
+		derCerts, parseErr := x509.ParseCertificates(certBytes)
+		if parseErr != nil {
+			return nil, parseErr
+		}
+		//fmt.Printf("Loaded a total of %d certs\n", len(derCerts))
+		sorted, sortErr := x509extras.SortCertificateChain(derCerts[:])
+		if sortErr != nil {
+			for _,dc := range derCerts {
+				certinfo.LogCertInfo(dc)
+			}
+			return nil, sortErr
+		}
+		return sorted, nil
 	}
 	certs := append([]*x509.Certificate{cert}, chain...)
 	sorted, err := x509extras.SortCertificateChain(certs)
@@ -381,7 +415,7 @@ func (c *CertificateService) GetInfo(opts options.InfoOptions) error {
 			format := certformat.CertificateFormat.Detect(path)
 			switch format {
 			case certformat.DER:
-				fmt.Println("Binary certificate file found: ", path)
+				//fmt.Println("Binary certificate file found: ", path)
 				certs, err := loadBinaryCertsFromFile(path, opts.Password)
 				if err == nil {
 					if !opts.ShortSummary {
@@ -399,7 +433,7 @@ func (c *CertificateService) GetInfo(opts options.InfoOptions) error {
 					return err
 				}
 			case certformat.PEM:
-				fmt.Println("PEM certificate file found: ", path)
+				//fmt.Println("PEM certificate file found: ", path)
 				certs, err := loadPemCertsFromFile(path)
 				if err == nil {
 					if !opts.ShortSummary {
@@ -418,6 +452,15 @@ func (c *CertificateService) GetInfo(opts options.InfoOptions) error {
 				}
 			}
 		}
+	}
+	if opts.CSR != "" {
+		fmt.Printf("reading CSR from file: %s\n", opts.CSR)
+		csr,err := loadCsrFromFile(opts.CSR)
+		if err != nil {
+			fmt.Println(fmt.Errorf("reading CSR failed: %W", err))
+			return err
+		}
+		certinfo.LogCsrInfo(csr)
 	}
 	return nil
 }
