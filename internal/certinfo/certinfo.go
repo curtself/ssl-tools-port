@@ -93,26 +93,12 @@ func LogCsrInfo(csr *x509.CertificateRequest) {
 	default:
 		log.Printf("Key Type: %T", pub)
 	}
-	/*
-		skid, err := ComputeSKIDFromPublicKey(csr.PublicKey)
-		if err == nil {
-			log.Printf("SKID: %s", hex.EncodeToString(skid))
-		}
-	*/
 	// Parse Extensions
 	for _, ext := range csr.Extensions {
 		oid := ext.Id.String()
 		extName := getFriendlyName(oid)
-		/*
-		isCritical := ext.Critical
-		if isCritical {
-			extName += " (critical)"
-		}
-		*/
 
 		switch oid {
-		/*
-		 */
 		case "2.5.29.14": // SKID
 			var skid []byte
 			_, err := asn1.Unmarshal(ext.Value, &skid)
@@ -188,16 +174,20 @@ func ComputeSKIDFromPublicKey(pubKey crypto.PublicKey) ([]byte, error) {
 	return skid[:], nil
 }
 
+/*
+This version is what gets used by LogCsrInfo. x509.CertificateRequest does not
+expose the KeyUsage type like x509.Certificate does so we have to parse from ASN1 data
+*/
 func friendlyExtKeyUsage(oid asn1.ObjectIdentifier) string {
 	switch {
 	case oid.Equal([]int{1, 3, 6, 1, 5, 5, 7, 3, 1}):
-		return "ServerAuth"
+		return "Server Authentication"
 	case oid.Equal([]int{1, 3, 6, 1, 5, 5, 7, 3, 2}):
-		return "ClientAuth"
+		return "Client Authentication"
 	case oid.Equal([]int{1, 3, 6, 1, 5, 5, 7, 3, 3}):
-		return "CodeSigning"
+		return "Code Signing"
 	case oid.Equal([]int{1, 3, 6, 1, 5, 5, 7, 3, 4}):
-		return "EmailProtection"
+		return "Email Protection"
 	default:
 		return "Unknown EKU: " + oid.String()
 	}
@@ -276,15 +266,15 @@ func extKeyUsageString(usages []x509.ExtKeyUsage) string {
 	for _, usage := range usages {
 		switch usage {
 		case x509.ExtKeyUsageServerAuth:
-			result = append(result, "ServerAuth")
+			result = append(result, "Server Authentication")
 		case x509.ExtKeyUsageClientAuth:
-			result = append(result, "ClientAuth")
+			result = append(result, "Client Authentication")
 		case x509.ExtKeyUsageCodeSigning:
-			result = append(result, "CodeSigning")
+			result = append(result, "Code Signing")
 		case x509.ExtKeyUsageEmailProtection:
-			result = append(result, "EmailProtection")
+			result = append(result, "Email Protection")
 		case x509.ExtKeyUsageTimeStamping:
-			result = append(result, "TimeStamping")
+			result = append(result, "Time Stamping")
 		default:
 			result = append(result, fmt.Sprintf("Unknown (%d)", usage))
 		}

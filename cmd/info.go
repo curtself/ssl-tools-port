@@ -20,7 +20,7 @@ var infoCmd = &cobra.Command{
 		if err := infoOpts.Validate(); err != nil {
 			return err
 		}
-		//fmt.Printf("Arguments given %+v\n",infoOpts)
+		fmt.Printf("Arguments given %+v\n",infoOpts)
 		svc := certsvc.New()
 		err := svc.GetInfo(infoOpts)
 		if err != nil {

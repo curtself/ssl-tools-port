@@ -9,14 +9,16 @@ import (
 	"errors"
 	"fmt"
 	"os"
+
 	//"slices"
-	"software.sslmate.com/src/go-pkcs12"
 	"ssl-tools/internal/certformat"
 	"ssl-tools/internal/certinfo"
 	"ssl-tools/internal/models"
 	"ssl-tools/internal/options"
 	"ssl-tools/internal/x509extras"
 	"strings"
+
+	"software.sslmate.com/src/go-pkcs12"
 )
 
 type CertificateService struct {
@@ -161,6 +163,32 @@ func (c *CertificateService) SavePFXdto(dto *models.PFXdto) error {
 	return nil
 }
 
+/*
+TODO - Need to add detection of the certificate format. Current function
+assumes PEM format and that may not be the case.
+pseudo flow
+
+ 1. detect format
+
+ 2. load certs (either pem or der)
+
+ 3. sort cert chain (aka autofix-mini)
+
+ 4. save subject in dto
+
+ 5. load key
+
+ 6. parse private key
+
+ 7. build output cert (with chain if options set)
+
+ 8. encode to pfx
+
+    Realistically could add options for output format.
+    Now it only makes a pfx but we could make PEM and DER, as there are
+    some cases where a PEM chain with PEM key after is the requested format.
+    If something works with PEM we should provide a DER alternative as well.
+*/
 func (c *CertificateService) FinishCSR(opts options.FinishOptions) (*models.PFXdto, error) {
 	dto := &models.PFXdto{}
 
@@ -169,17 +197,6 @@ func (c *CertificateService) FinishCSR(opts options.FinishOptions) (*models.PFXd
 	if err != nil {
 		dto.CreateMessage = fmt.Sprintf("Failed to read certificate file: %v", err)
 		dto.OpCode = 1001
-		return dto, nil
-	}
-
-	// Step 2: Autofix could be inserted here
-	// certBytes = Autofix(certBytes)
-
-	// Step 3: Read key file
-	keyBytes, err := os.ReadFile(opts.Key)
-	if err != nil {
-		dto.CreateMessage = fmt.Sprintf("Failed to read key file: %v", err)
-		dto.OpCode = 1002
 		return dto, nil
 	}
 
@@ -200,6 +217,14 @@ func (c *CertificateService) FinishCSR(opts options.FinishOptions) (*models.PFXd
 	}
 	// Step 5.5: Save subject in dto
 	dto.CommonName = endEntity.Subject.CommonName
+
+	// Step 3: Read key file
+	keyBytes, err := os.ReadFile(opts.Key)
+	if err != nil {
+		dto.CreateMessage = fmt.Sprintf("Failed to read key file: %v", err)
+		dto.OpCode = 1002
+		return dto, nil
+	}
 
 	// Step 6: Parse private key
 	privKey, err := parseRSAPrivateKey(keyBytes)
@@ -351,14 +376,14 @@ func loadCsrFromFile(path string) (*x509.CertificateRequest, error) {
 	if err != nil {
 		return nil, err
 	}
-	block,_ := pem.Decode(pemBytes)
+	block, _ := pem.Decode(pemBytes)
 	if block != nil {
 		if block.Type != "CERTIFICATE REQUEST" {
 			fmt.Printf("failed to get CSR, instead got %s\n", block.Type)
-			return nil, errors.New("bad PEM block type") 
+			return nil, errors.New("bad PEM block type")
 		}
 	} else {
-		return nil, errors.New("could not read PEM data") 
+		return nil, errors.New("could not read PEM data")
 	}
 	csr, err := x509.ParseCertificateRequest(block.Bytes)
 	if err != nil {
@@ -393,7 +418,7 @@ func loadBinaryCertsFromFile(path string, pass string) ([]*x509.Certificate, err
 		//fmt.Printf("Loaded a total of %d certs\n", len(derCerts))
 		sorted, sortErr := x509extras.SortCertificateChain(derCerts[:])
 		if sortErr != nil {
-			for _,dc := range derCerts {
+			for _, dc := range derCerts {
 				certinfo.LogCertInfo(dc)
 			}
 			return nil, sortErr
@@ -444,7 +469,7 @@ func (c *CertificateService) GetInfo(opts options.InfoOptions) error {
 					fmt.Println(strings.Repeat("-", 92))
 					fmt.Println("Chain summary")
 					for i, cert := range certs {
-						certinfo.LogCertSummary(cert,i)
+						certinfo.LogCertSummary(cert, i)
 					}
 				} else {
 					fmt.Println(fmt.Errorf("reading certificates failed: %W", err))
@@ -455,7 +480,7 @@ func (c *CertificateService) GetInfo(opts options.InfoOptions) error {
 	}
 	if opts.CSR != "" {
 		fmt.Printf("reading CSR from file: %s\n", opts.CSR)
-		csr,err := loadCsrFromFile(opts.CSR)
+		csr, err := loadCsrFromFile(opts.CSR)
 		if err != nil {
 			fmt.Println(fmt.Errorf("reading CSR failed: %W", err))
 			return err
