@@ -46,6 +46,7 @@ func init() {
 	finishCmd.Flags().StringVar(&finishOpts.Password, "password", "", "Password for PFX file (required)")
 	finishCmd.Flags().BoolVar(&finishOpts.Chain, "chain", false, "Include the certificate chain (optional)")
 	finishCmd.Flags().BoolVar(&finishOpts.IncludeRoot, "include-root", false, "Include the root certificate(s) in the chain (optional)")
+	finishCmd.Flags().BoolVarP(&finishOpts.Verbose,"verbose", "v", false, "Verbose output")
 	finishCmd.MarkFlagRequired("certificate")
 	finishCmd.MarkFlagRequired("key")
 	// password is checked via the Validate() function. It can come from cli or environment variable

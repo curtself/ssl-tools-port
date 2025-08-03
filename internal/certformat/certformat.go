@@ -1,7 +1,7 @@
 package certformat
 
 import (
-	"bufio"
+	//"bufio"
 	"os"
 )
 
@@ -21,7 +21,11 @@ type formatDetector struct{}
 
 // Detect reads the given file path and tries to determine if it's DER or PEM.
 func (formatDetector) Detect(path string) Format {
-	isBinary, err := isBinaryData(path)
+	bytes, err := getFileBytes(path)
+	if err != nil {
+		return Unknown
+	}
+	isBinary, err := isBinaryData(bytes)
 	if err != nil {
 		return Unknown
 	}
@@ -31,32 +35,51 @@ func (formatDetector) Detect(path string) Format {
 	return PEM
 }
 
-// isBinaryData checks for non-text control characters.
-func isBinaryData(path string) (bool, error) {
+// DetectBytes reads the bytes to determine if it's DER or PEM
+// It's really a public wrapper for "isBinaryData([]byte)"
+func (formatDetector) DetectBytes(bytes []byte) Format {
+	isBinary, err := isBinaryData(bytes)
+	if err != nil {
+		return Unknown
+	}
+	if isBinary {
+		return DER
+	}
+	return PEM
+}
+
+// just get bytes from a file
+func getFileBytes(path string) ([]byte, error) {
 	info, err := os.Stat(path)
 	if err != nil {
-		return false, err
+		return nil, err
 	}
 	if info.Size() == 0 {
-		return false, nil
+		return nil, nil
 	}
 
 	f, err := os.Open(path)
 	if err != nil {
-		return false, err
+		return nil, err
 	}
 	defer f.Close()
+	bytes, err := os.ReadFile(path)
+	if err != nil {
+		return nil, err
+	}
+	return bytes, nil
+}
 
-	reader := bufio.NewReader(f)
-	for {
-		b, err := reader.ReadByte()
-		if err != nil {
-			break // EOF or read error
-		}
+func isBinaryData(bytes []byte) (bool, error) {
+	for i := range bytes { 
+		b := bytes[i]
 		if (b > 0 && b < 8) || (b > 13 && b < 26) {
 			return true, nil
 		}
 	}
 	return false, nil
 }
+
+
+
 

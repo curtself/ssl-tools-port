@@ -8,11 +8,12 @@ import (
 	"encoding/pem"
 	"errors"
 	"fmt"
+	"log"
+	"net/url"
 	"os"
-
-	//"slices"
 	"ssl-tools/internal/certformat"
 	"ssl-tools/internal/certinfo"
+	"ssl-tools/internal/handshake"
 	"ssl-tools/internal/models"
 	"ssl-tools/internal/options"
 	"ssl-tools/internal/x509extras"
@@ -168,57 +169,83 @@ TODO - Need to add detection of the certificate format. Current function
 assumes PEM format and that may not be the case.
 pseudo flow
 
- 1. detect format
+ 1. detect format [x]
 
- 2. load certs (either pem or der)
+ 2. load certs (either pem or der) [x]
 
- 3. sort cert chain (aka autofix-mini)
+ 3. sort cert chain (aka autofix-mini) [x] (certs should be sorted already by their loaders)
 
- 4. save subject in dto
+ 4. save subject in dto [x]
 
- 5. load key
+ 5. load key [x]
 
- 6. parse private key
+ 6. parse private key [x]
 
- 7. build output cert (with chain if options set)
+ 7. build output cert (with chain if options set) [x]
 
- 8. encode to pfx
+ 8. encode to pfx [x]
 
     Realistically could add options for output format.
     Now it only makes a pfx but we could make PEM and DER, as there are
     some cases where a PEM chain with PEM key after is the requested format.
     If something works with PEM we should provide a DER alternative as well.
+    (see notes below under TODO for suggestions on how to handle)
 */
 func (c *CertificateService) FinishCSR(opts options.FinishOptions) (*models.PFXdto, error) {
 	dto := &models.PFXdto{}
-
-	// Step 1: Read certificate file
-	certBytes, err := os.ReadFile(opts.Certificate)
-	if err != nil {
-		dto.CreateMessage = fmt.Sprintf("Failed to read certificate file: %v", err)
-		dto.OpCode = 1001
-		return dto, nil
+	// Detect certificate type
+	format := certformat.CertificateFormat.Detect(opts.Certificate)
+	var certs []*x509.Certificate
+	var err error
+	// Load the certificate (plus chain)
+	switch format {
+	case certformat.DER:
+		if opts.Verbose {
+			fmt.Println("Loading DER cert")
+		}
+		certs, err = loadBinaryCertsFromFile(opts.Certificate, "")
+		if err != nil {
+			// return error and dto
+			dto.CreateMessage = "Could not load binary certificate"
+			dto.OpCode = 1001
+			return dto, err
+		}
+	case certformat.PEM:
+		if opts.Verbose {
+			fmt.Println("Loading PEM cert")
+		}
+		certs, err = loadPemCertsFromFile(opts.Certificate)
+		if err != nil {
+			// return error and dto
+			dto.CreateMessage = "Could not load PEM certificate"
+			dto.OpCode = 1002
+			return dto, err
+		}
 	}
 
-	// Step 4: Parse certificates from PEM
-	certs, err := parsePEMCerts(certBytes)
-	if err != nil || len(certs) == 0 {
+	// Validate that certificates were found
+	if len(certs) == 0 {
 		dto.CreateMessage = "No valid certificates found"
 		dto.OpCode = 1003
 		return dto, nil
 	}
+	// Show info if in verbose mode
+	if opts.Verbose {
+		fmt.Printf("Loaded %d certs\n", len(certs))
+		certinfo.LogChainSummary(certs)
+	}
 
-	// Step 5: Identify end-entity certificate
+	// Identify end-entity certificate
 	endEntity := findEndEntityCert(certs)
 	if endEntity == nil {
 		dto.CreateMessage = "No unique end-entity certificate found"
 		dto.OpCode = 1004
 		return dto, nil
 	}
-	// Step 5.5: Save subject in dto
+	// Save subject in dto
 	dto.CommonName = endEntity.Subject.CommonName
 
-	// Step 3: Read key file
+	// Read key file
 	keyBytes, err := os.ReadFile(opts.Key)
 	if err != nil {
 		dto.CreateMessage = fmt.Sprintf("Failed to read key file: %v", err)
@@ -226,7 +253,7 @@ func (c *CertificateService) FinishCSR(opts options.FinishOptions) (*models.PFXd
 		return dto, nil
 	}
 
-	// Step 6: Parse private key
+	// Parse private key
 	privKey, err := parseRSAPrivateKey(keyBytes)
 	if err != nil {
 		dto.CreateMessage = fmt.Sprintf("Failed to parse private key: %v", err)
@@ -234,27 +261,30 @@ func (c *CertificateService) FinishCSR(opts options.FinishOptions) (*models.PFXd
 		return dto, nil
 	}
 
-	// Step 7: Create a certificate with private key
-	/* go certificates do not have private keys
-	endEntityWithKey, err := endEntity.PrivateKey(privKey)
-	if err != nil {
-		dto.CreateMessage = fmt.Sprintf("Failed to attach private key: %v", err)
-		dto.OpCode = 1006
-		return dto, nil
-	}
-	*/
-
-	// Step 8: Build certificate chain
+	// Build certificate chain (if the --chain flag is set)
 	chain := []*x509.Certificate{endEntity}
 	// Only include a chain if the option is set
 	if opts.Chain {
+		if opts.Verbose {
+			fmt.Println("Including chain...")
+		}
 		if !opts.IncludeRoot {
 			// if we are not including root certs then filter them out
 			certs = filterTrustedCerts(certs)
+			if opts.Verbose {
+				fmt.Printf("After filtering tursted certs we have %d left\n", len(certs))
+			}
 		}
+		// Depending on opts.Include root the certs slice will either be all in chain or only untrusted
 		for _, cert := range certs {
+			if opts.Verbose {
+				fmt.Printf(" >> Checking %s\n", cert.Subject.CommonName)
+			}
 			if opts.IncludeRoot || !isSelfSigned(cert) {
 				if !cert.Equal(endEntity) {
+					if opts.Verbose {
+						fmt.Printf("Adding cert to chain (%s)\n", cert.Subject.CommonName)
+					}
 					//chain = append(chain, cert)
 					chain = append([]*x509.Certificate{cert}, chain...)
 				}
@@ -262,9 +292,14 @@ func (c *CertificateService) FinishCSR(opts options.FinishOptions) (*models.PFXd
 		}
 	}
 
-	// Step 9: Encode to PFX
+	// TODO - wrap this in a check for output format. only do this if output is PFX
+	//		- that would require reworking the options, since -p/--pfx is currently used
+	//		- maybe (-f/--format) could be used and it defaults to pfx
+	//		- and (-p/--pfx) could be updated to (-o/--output-file) where it defaults to ""
+	//		- if left blank the base name could come from the CommonName like now, but the
+	//		- file extension would come from the (-f/--format) flag
+	// Encode to PFX
 	pfxData, err := encodeToPFX(chain, privKey, opts.Password)
-	//fmt.Printf("Using password of [%s]\n", opts.Password)
 	if err != nil {
 		dto.CreateMessage = fmt.Sprintf("Failed to create PFX: %v", err)
 		dto.OpCode = 1007
@@ -276,33 +311,32 @@ func (c *CertificateService) FinishCSR(opts options.FinishOptions) (*models.PFXd
 	return dto, nil
 }
 
-// helper functions
 func filterTrustedCerts(chain []*x509.Certificate) []*x509.Certificate {
-	var result []*x509.Certificate
-	for _, cert := range chain {
-		// only add non-root certs
-		if !isTrusted(cert) {
-			result = append(result, cert)
-		}
-	}
-	return result
-}
-
-func isTrusted(cert *x509.Certificate) bool {
-	roots, err := x509.SystemCertPool()
-	if err != nil {
-		return false
+	if len(chain) == 0 {
+		return nil
 	}
 
-	intermediates := x509.NewCertPool() // empty
+	leaf := chain[0]
+	intermediates := x509.NewCertPool()
+	for _, cert := range chain[1:] {
+		intermediates.AddCert(cert)
+	}
+
 	opts := x509.VerifyOptions{
-		Roots:         roots,
+		Roots:         nil, // use system roots
 		Intermediates: intermediates,
 		KeyUsages:     []x509.ExtKeyUsage{x509.ExtKeyUsageAny},
 	}
 
-	_, err = cert.Verify(opts)
-	return err == nil
+	verifyChains, err := leaf.Verify(opts)
+	if err != nil {
+		fmt.Printf("  >> VERIFICATION ERROR: %v\n", err)
+		return chain // if verification failed, return all certs as "untrusted"
+	}
+
+	// Use only the first valid chain
+	verifiedChain := verifyChains[0]
+	return verifiedChain
 }
 
 func parsePEMCerts(pemData []byte) ([]*x509.Certificate, error) {
@@ -391,6 +425,8 @@ func loadCsrFromFile(path string) (*x509.CertificateRequest, error) {
 	}
 	return csr, nil
 }
+
+// This function loads PEM certs from file
 func loadPemCertsFromFile(path string) ([]*x509.Certificate, error) {
 	certBytes, err := os.ReadFile(path)
 	if err != nil {
@@ -399,9 +435,17 @@ func loadPemCertsFromFile(path string) ([]*x509.Certificate, error) {
 
 	// Step 4: Parse certificates from PEM
 	certs, err := parsePEMCerts(certBytes)
-	return certs, nil
+	sorted, sortErr := x509extras.SortCertificateChain(certs[:])
+	if sortErr != nil {
+		// here we have an error when we try to sort.
+		// we can just return the unsorted certs instead
+		return certs, nil
+	}
+	return sorted, nil
 
 }
+
+// This function loads DER certs from file AND sorts them
 func loadBinaryCertsFromFile(path string, pass string) ([]*x509.Certificate, error) {
 	certBytes, err := os.ReadFile(path)
 	if err != nil {
@@ -450,9 +494,12 @@ func (c *CertificateService) GetInfo(opts options.InfoOptions) error {
 					}
 					fmt.Println(strings.Repeat("-", 92))
 					fmt.Println("Chain summary")
-					for i, cert := range certs {
-						certinfo.LogCertSummary(cert, i)
-					}
+					certinfo.LogChainSummary(certs)
+					/*
+						for i, cert := range certs {
+							certinfo.LogCertSummary(cert, i)
+						}
+					*/
 				} else {
 					fmt.Println(fmt.Errorf("reading certificates failed: %w", err))
 					return err
@@ -468,9 +515,12 @@ func (c *CertificateService) GetInfo(opts options.InfoOptions) error {
 					}
 					fmt.Println(strings.Repeat("-", 92))
 					fmt.Println("Chain summary")
-					for i, cert := range certs {
-						certinfo.LogCertSummary(cert, i)
-					}
+					certinfo.LogChainSummary(certs)
+					/*
+						for i, cert := range certs {
+							certinfo.LogCertSummary(cert, i)
+						}
+					*/
 				} else {
 					fmt.Println(fmt.Errorf("reading certificates failed: %W", err))
 					return err
@@ -486,6 +536,42 @@ func (c *CertificateService) GetInfo(opts options.InfoOptions) error {
 			return err
 		}
 		certinfo.LogCsrInfo(csr)
+	}
+	// TODO - add handling of hosts (similar to URLs)
+	if len(opts.URLs) > 0 {
+		for _, urlString := range opts.URLs {
+			if !strings.HasPrefix(urlString, "http") {
+				urlString = "https://" + urlString
+			}
+			u, err := url.Parse(urlString)
+			if err != nil {
+				log.Fatal(err)
+				return err
+			}
+			host := u.Host
+			h := handshake.New(host, "")
+			certs, err := h.PerformHandshake()
+			fmt.Printf("Got host [%s] from options\n", host)
+			if err == nil {
+				if !opts.ShortSummary {
+					for _, cert := range certs {
+						certinfo.LogCertInfo(cert)
+					}
+				}
+				fmt.Println(strings.Repeat("-", 92))
+				fmt.Println("Chain summary")
+				certinfo.LogChainSummary(certs)
+				/*
+					for i, cert := range certs {
+						certinfo.LogCertSummary(cert, i)
+					}
+				*/
+			} else {
+				fmt.Println(fmt.Errorf("reading certificates failed: %W", err))
+				log.Fatal(err)
+				return err
+			}
+		}
 	}
 	return nil
 }

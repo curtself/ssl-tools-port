@@ -19,6 +19,14 @@ func LogCertSummary(cert *x509.Certificate, index int) {
 	log.Printf("[%d] %s", index, cert.Subject.CommonName)
 }
 
+func LogChainSummary(chain []*x509.Certificate) {
+	log.SetFlags(0)
+	for i, cert := range chain {
+		LogCertSummary(cert, i)
+	}
+
+}
+
 // LogCertInfo prints details of the given certificate
 func LogCertInfo(cert *x509.Certificate) {
 	log.SetFlags(0)
@@ -30,7 +38,7 @@ func LogCertInfo(cert *x509.Certificate) {
 	log.Printf("Issuer: %s", cert.Issuer.CommonName)
 	log.Printf("Issuer DN: %s", cert.Issuer.String())
 	log.Printf("Serial Number: %s", cert.SerialNumber.String())
-	log.Printf("Thumbprint (SHA-1): %X", certFingerprintSHA1(cert))
+	log.Printf("Thumbprint: %X", certFingerprintSHA1(cert))
 
 	for _, ext := range cert.Extensions {
 		oid := ext.Id.String()

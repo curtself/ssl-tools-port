@@ -4,9 +4,12 @@ import (
 	"errors"
 	"os"
 )
+var rawHostPairs []string
+
 type InfoOptions struct {
     Certificates	[]string
     URLs       		[]string
+	Hosts			map[string]string
     CSR		        string
 	ShortSummary	bool
 	Password		string
