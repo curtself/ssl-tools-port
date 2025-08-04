@@ -567,7 +567,37 @@ func (c *CertificateService) GetInfo(opts options.InfoOptions) error {
 					}
 				*/
 			} else {
-				fmt.Println(fmt.Errorf("reading certificates failed: %W", err))
+				fmt.Println(fmt.Errorf("reading certificates failed: %w", err))
+				log.Fatal(err)
+				return err
+			}
+		}
+	}
+	if len(opts.Hosts) > 0 {
+		fmt.Println("reading certificates from host(s)")
+		for k,v := range opts.Hosts {
+			if !strings.HasPrefix(k,"http") {
+				k = "https://" + k
+			}
+			u, err := url.Parse(k)
+			if err != nil {
+				log.Fatal(err)
+				return err
+			}
+			host := u.Host
+			h := handshake.New(host,v)
+			certs, err := h.PerformHandshake()
+			if err == nil {
+				if !opts.ShortSummary {
+					for _, cert := range certs {
+						certinfo.LogCertInfo(cert)
+					}
+				}
+				fmt.Println(strings.Repeat("-", 92))
+				fmt.Println("Chain summary")
+				certinfo.LogChainSummary(certs)
+			} else {
+				fmt.Println( fmt.Errorf("reading certificates failed: %w", err))
 				log.Fatal(err)
 				return err
 			}

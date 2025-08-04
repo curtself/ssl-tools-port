@@ -1,0 +1,8 @@
+TODO - It seems like OCI is returning different chains sometimes.
+For instance, running this command is sequence:
+go run . info -u myportal.sdccd.edu -s
+will result in either a full chain of 4 certs or a single chain.
+I'm unsure why this is happening. It's either a bug in my code or
+a quick of OCI.
+It's happening in the C# version as well, but it more often returns 
+the single certificate than the full chain.

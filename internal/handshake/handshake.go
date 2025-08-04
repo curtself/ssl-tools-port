@@ -28,11 +28,12 @@ func (s *HandshakeService) PerformHandshake() ([]*x509.Certificate, error) {
 		addr = s.Address + ":" + s.Port
 	}
 
-	fmt.Println("Dialing TCP to ", addr)
+	fmt.Println("Dialing TCP to", addr)
 	conn, err := net.DialTimeout("tcp", addr, 5*time.Second)
 	if err != nil {
 		return nil, fmt.Errorf("failed to connect: %w", err)
 	}
+	fmt.Println("Connected to",conn.RemoteAddr())
 	defer conn.Close()
 
 	clientHello := BuildClientHello(s.Host)
@@ -51,5 +52,6 @@ func (s *HandshakeService) PerformHandshake() ([]*x509.Certificate, error) {
 	if n == 0 {
 		return nil, fmt.Errorf("no response from server")
 	}
+	fmt.Printf("received %d bytes from server\n", n)
 	return ParseCertificates(response[:n])
 }
