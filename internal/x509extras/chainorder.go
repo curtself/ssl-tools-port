@@ -12,6 +12,10 @@ func SortCertificateChain(certs []*x509.Certificate) ([]*x509.Certificate, error
 		return nil, nil
 	}
 
+	// if we only have 1 cert then it is already sorted
+	if len(certs) == 1 {
+		return certs, nil
+	}
 	// Build maps for subject and issuer relationships
 	subjectMap := make(map[string]*x509.Certificate)
 	issuerMap := make(map[string][]*x509.Certificate)
