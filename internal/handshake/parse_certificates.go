@@ -4,7 +4,7 @@ import (
 	"crypto/x509"
 	"errors"
 	"fmt"
-	//"os"
+	"os"
 )
 
 // VariantInfo represents the detected variant of the TLS handshake
@@ -89,13 +89,13 @@ func ParseCertificates(data []byte) ([]*x509.Certificate, error) {
 
 	default:
 		/*
-		// Save the raw data to a file for debugging
-		err := os.WriteFile("server_hello_dump.bin", data, 0644)
-		if err != nil {
-			fmt.Printf("Failed to save unknown TLS variant to file: %v\n", err)
-		} else {
-			fmt.Printf("Saved unknown TLS response to server_hello_dump.bin (%d bytes)\n", len(data))
-		}
+			// Save the raw data to a file for debugging
+			err := os.WriteFile("server_hello_dump.bin", data, 0644)
+			if err != nil {
+				fmt.Printf("Failed to save unknown TLS variant to file: %v\n", err)
+			} else {
+				fmt.Printf("Saved unknown TLS response to server_hello_dump.bin (%d bytes)\n", len(data))
+			}
 		*/
 		return nil, errors.New("unknown TLS variant; no certs parsed")
 	}
@@ -118,10 +118,15 @@ func ParseCertificates(data []byte) ([]*x509.Certificate, error) {
 		}
 		certs = append(certs, cert)
 	}
+	err := os.WriteFile("server_hello_dump.bin", data, 0644)
+	if err != nil {
+		fmt.Printf("Failed to save unknown TLS variant to file: %v\n", err)
+	} else {
+		fmt.Printf("Saved unknown TLS response to server_hello_dump.bin (%d bytes)\n", len(data))
+	}
 
 	if len(certs) == 0 {
 		return nil, errors.New("no certificates parsed")
 	}
 	return certs, nil
 }
-

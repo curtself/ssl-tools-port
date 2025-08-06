@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"net"
 	"time"
+	"io"
+	"errors"
 )
 
 type HandshakeService struct {
@@ -33,25 +35,48 @@ func (s *HandshakeService) PerformHandshake() ([]*x509.Certificate, error) {
 	if err != nil {
 		return nil, fmt.Errorf("failed to connect: %w", err)
 	}
-	fmt.Println("Connected to",conn.RemoteAddr())
+	fmt.Println("Connected to", conn.RemoteAddr())
 	defer conn.Close()
 
 	clientHello := BuildClientHello(s.Host)
-	//fmt.Printf("Sending clientHello of:\n%s\n", clientHello)
-	//fmt.Printf("Sending client hello of %d bytes...\n", len(clientHello))
 	_, err = conn.Write(clientHello)
 	if err != nil {
 		return nil, fmt.Errorf("failed to send ClientHello: %w", err)
 	}
 
-	response := make([]byte, 8192)
-	n, err := conn.Read(response)
-	if err != nil {
-		return nil, fmt.Errorf("failed to read response %w", err)
+	var fullResponse []byte
+	buf := make([]byte, 8192)
+
+	for {
+		fmt.Println("Reading TCP packet...")
+		n, err := conn.Read(buf)
+		if err != nil {
+			if errors.Is(err, io.EOF) {
+				fmt.Println("Server closed connection")
+				break
+			}
+			return nil, fmt.Errorf("failed to read response: %w", err)
+		}
+		if n == 0 {
+			break
+		}
+
+		fullResponse = append(fullResponse, buf[:n]...)
+
+		// Check if last two bytes are 0x00 0x00
+		if len(fullResponse) >= 2 {
+			end := fullResponse[len(fullResponse)-2:]
+			if end[0] == 0x00 && end[1] == 0x00 {
+				break
+			}
+		}
 	}
-	if n == 0 {
+
+	if len(fullResponse) == 0 {
 		return nil, fmt.Errorf("no response from server")
 	}
-	fmt.Printf("received %d bytes from server\n", n)
-	return ParseCertificates(response[:n])
+
+	fmt.Printf("received total %d bytes from server\n", len(fullResponse))
+	return ParseCertificates(fullResponse)
 }
+
