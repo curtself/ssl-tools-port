@@ -123,7 +123,8 @@ func check(e error) {
 	}
 }
 
-func (c *CertificateService) SaveCSRdto(dto *models.CSRdto) error {
+func (c *CertificateService) SaveCSRdto(dto *models.CSRdto) ([]string, error) {
+	var logs []string
 	// first save CSR data to file
 	csrFile := fmt.Sprintf("%s.csr", dto.Label)
 	f, err := os.Create(csrFile)
@@ -131,7 +132,7 @@ func (c *CertificateService) SaveCSRdto(dto *models.CSRdto) error {
 	defer f.Close()
 	byteCount, err := f.Write([]byte(dto.RequestData))
 	check(err)
-	fmt.Printf("wrote %d bytes to %s\n", byteCount, csrFile)
+	logs = append(logs, fmt.Sprintf("wrote %d bytes to %s", byteCount, csrFile))
 
 	// then save key but only if the key was created by service
 	if c.keyCreated {
@@ -142,9 +143,9 @@ func (c *CertificateService) SaveCSRdto(dto *models.CSRdto) error {
 		defer k.Close()
 		keyByteCount, err := k.Write([]byte(dto.KeyData))
 		check(err)
-		fmt.Printf("wrote %d bytes to %s\n", keyByteCount, keyFile)
+		logs = append(logs, fmt.Sprintf("wrote %d bytes to %s", keyByteCount, keyFile))
 	}
-	return nil
+	return logs,nil
 }
 
 func (c *CertificateService) SavePFXdto(dto *models.PFXdto) error {
@@ -575,8 +576,8 @@ func (c *CertificateService) GetInfo(opts options.InfoOptions) error {
 	}
 	if len(opts.Hosts) > 0 {
 		fmt.Println("reading certificates from host(s)")
-		for k,v := range opts.Hosts {
-			if !strings.HasPrefix(k,"http") {
+		for k, v := range opts.Hosts {
+			if !strings.HasPrefix(k, "http") {
 				k = "https://" + k
 			}
 			u, err := url.Parse(k)
@@ -585,7 +586,7 @@ func (c *CertificateService) GetInfo(opts options.InfoOptions) error {
 				return err
 			}
 			host := u.Host
-			h := handshake.New(host,v)
+			h := handshake.New(host, v)
 			certs, err := h.PerformHandshake()
 			if err == nil {
 				if !opts.ShortSummary {
@@ -597,7 +598,7 @@ func (c *CertificateService) GetInfo(opts options.InfoOptions) error {
 				fmt.Println("Chain summary")
 				certinfo.LogChainSummary(certs)
 			} else {
-				fmt.Println( fmt.Errorf("reading certificates failed: %w", err))
+				fmt.Println(fmt.Errorf("reading certificates failed: %w", err))
 				log.Fatal(err)
 				return err
 			}

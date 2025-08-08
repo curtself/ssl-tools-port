@@ -1,3 +1,4 @@
+// tui/create.go
 package tui
 
 import (
@@ -7,17 +8,11 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/bubbles/textinput"
 	"github.com/charmbracelet/lipgloss"
+	"ssl-tools/internal/options"
+	"ssl-tools/internal/certsvc"
 )
 
-var (
-	focusedStyle        = lipgloss.NewStyle().Foreground(lipgloss.Color("205"))
-	blurredStyle        = lipgloss.NewStyle().Foreground(lipgloss.Color("240"))
-	cursorStyle         = lipgloss.NewStyle().Foreground(lipgloss.Color("212"))
-	buttonFocusedStyle  = lipgloss.NewStyle().Foreground(lipgloss.Color("230")).Background(lipgloss.Color("57")).Padding(0, 2).Bold(true)
-	buttonBlurredStyle  = lipgloss.NewStyle().Foreground(lipgloss.Color("240")).Padding(0, 2)
-	labelStyle          = lipgloss.NewStyle().Bold(true)
-	fieldWidth          = 40
-)
+var createOpts options.CreateOptions
 
 var keySizes = []int{2048, 3072, 4096}
 
@@ -26,6 +21,8 @@ type CreateModel struct {
 	keySizeIndex int
 	focused      int  // current focus index over all fields + buttons
 	editing      bool // true if currently editing a text input
+	statusMsg	string
+	success		bool
 }
 
 const (
@@ -44,21 +41,21 @@ func NewCreateModel() *CreateModel {
 	ti := textinput.New()
 	ti.Placeholder = "Common Name (required)"
 	ti.CharLimit = 256
-	ti.Width = fieldWidth
+	ti.Width = FieldWidth
 	inputs[fieldCommonName] = ti
 
 	// SAN list
 	ti2 := textinput.New()
 	ti2.Placeholder = "SANs (comma separated)"
 	ti2.CharLimit = 512
-	ti2.Width = fieldWidth
+	ti2.Width = FieldWidth
 	inputs[fieldSANs] = ti2
 
 	// External Key
 	ti3 := textinput.New()
 	ti3.Placeholder = "External Key File (optional)"
 	ti3.CharLimit = 256
-	ti3.Width = fieldWidth
+	ti3.Width = FieldWidth
 	inputs[fieldExternalKey] = ti3
 
 	return &CreateModel{
@@ -80,7 +77,7 @@ func (m *CreateModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tea.KeyMsg:
 		switch msg.String() {
 
-		case "ctrl+c", "q":
+		case "ctrl+c", "q", "esc":
 			return m.handleBack()
 
 		case "up", "k":
@@ -218,19 +215,26 @@ func (m *CreateModel) View() string {
 	b.WriteString(m.renderButton("Create CSR", buttonCreateCSR))
 	b.WriteString(m.renderButton("Back to Menu", buttonBack))
 
+	if m.statusMsg != "" {
+		if m.success {
+			b.WriteString( lipgloss.NewStyle().Foreground(lipgloss.Color("10")).Render("\n"+m.statusMsg+"\n"))
+		} else {
+			b.WriteString( lipgloss.NewStyle().Foreground(lipgloss.Color("9")).Render("\n"+m.statusMsg+"\n"))
+		}
+	}
 	return b.String()
 }
 
 func (m *CreateModel) renderField(label, value string, idx int) string {
 	focused := m.focused == idx
-	style := blurredStyle
+	style := BlurredStyle
 	if focused {
-		style = focusedStyle
+		style = FocusedStyle
 	}
 
 	// if editing, show the input.View()
 	if m.editing && focused {
-		return fmt.Sprintf("%s %s\n", labelStyle.Render(label+":"),
+		return fmt.Sprintf("%s %s\n", LabelStyle.Render(label+":"),
 			m.inputs[idx].View())
 	}
 
@@ -243,14 +247,14 @@ func (m *CreateModel) renderField(label, value string, idx int) string {
 	if val == "" {
 		val = "<none>"
 	}
-	return fmt.Sprintf("%s %s %s\n", cursorStyle.Render(cursor), style.Render(label+":"), style.Render(val))
+	return fmt.Sprintf("%s %s %s\n", CursorStyle.Render(cursor), style.Render(label+":"), style.Render(val))
 }
 
 func (m *CreateModel) renderKeySize() string {
 	focused := m.focused == fieldKeySize
-	style := blurredStyle
+	style := BlurredStyle
 	if focused {
-		style = focusedStyle
+		style = FocusedStyle
 	}
 
 	cursor := " "
@@ -258,16 +262,16 @@ func (m *CreateModel) renderKeySize() string {
 		cursor = ">"
 	}
 	return fmt.Sprintf("%s %s %d\n",
-		cursorStyle.Render(cursor),
+		CursorStyle.Render(cursor),
 		style.Render("Key Size:"),
 		keySizes[m.keySizeIndex])
 }
 
 func (m *CreateModel) renderButton(label string, idx int) string {
 	focused := m.focused == idx
-	style := buttonBlurredStyle
+	style := ButtonBlurredStyle
 	if focused {
-		style = buttonFocusedStyle
+		style = ButtonFocusedStyle
 	}
 
 	return style.Render(fmt.Sprintf("[%s]", label))
@@ -277,16 +281,47 @@ func (m *CreateModel) renderButton(label string, idx int) string {
 func (m *CreateModel) handleCreate() (tea.Model, tea.Cmd) {
 	// Here you would construct your options.CreateOptions from the inputs and keySize
 	// then call your certsvc service CreateCSR and SaveCSRdto like you described.
-
-	// For now, just show a placeholder message or you can extend this with a result view.
-	return m, nil
+	createOpts.CommonName = m.inputs[fieldCommonName].Value()
+	sanSlice := []string{}
+	for _, s := range strings.Split(m.inputs[fieldSANs].Value()," ") {
+		sanSlice = append( sanSlice, strings.ReplaceAll(s,",","") )
+	}
+	createOpts.SANs = sanSlice
+	createOpts.KeySize = keySizes[m.keySizeIndex]
+	createOpts.Key = m.inputs[fieldExternalKey].Value()
+	// Need to call validate and return a custom message if it fails
+	if err := createOpts.Validate(); err != nil {
+		return m, func() tea.Msg {
+			return ValidateErrorMsg{err:err}
+		}
+	}
+	// instantiate the service and use it
+	svc := certsvc.New()
+	if err := svc.SetKeyLength(createOpts.KeySize); err != nil {
+		return m, func() tea.Msg {
+			return ValidateErrorMsg{err:err}
+		}
+	}
+	result, err := svc.CreateCSR(createOpts)
+	if err != nil {
+		return m, func() tea.Msg {
+			return CreateResultErrorMsg{err:err}
+		}
+	}
+	outputLines, err := svc.SaveCSRdto(result)
+	if err != nil {
+		return m, func() tea.Msg {
+			return CreateResultErrorMsg{err:err}
+		}
+	}
+	m.success = true
+	return m, func() tea.Msg {
+		return SuccessMsg{logs: outputLines}
+	}
 }
 
 // handleBack sends a Quit or a custom Msg to parent model to return to main menu
 func (m *CreateModel) handleBack() (tea.Model, tea.Cmd) {
-	// TODO: return a custom Msg so parent Model can switch back to main menu
-	// For now just quit to demonstrate:
-	//return m, tea.Quit
 	return m, func() tea.Msg {
 		return BackToMenuMsg{}
 	}

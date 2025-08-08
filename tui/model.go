@@ -2,6 +2,8 @@
 package tui
 
 import (
+	"fmt"
+	"strings"
 	"github.com/charmbracelet/bubbles/list"
 	tea "github.com/charmbracelet/bubbletea"
 )
@@ -10,6 +12,18 @@ type state int
 
 // BackToMenuMsg signals going back to the main menu.
 type BackToMenuMsg struct{}
+// ValidateErrorMsg signals there was an input error
+type ValidateErrorMsg struct {
+	err			error
+}
+// CreateResultErrorMsg signals something went wrong creating CSR
+type CreateResultErrorMsg struct {
+	err			error
+}
+// SuccessMsg signals a process complete with output
+type SuccessMsg struct {
+	logs		[]string
+}
 
 const (
 	stateMainMenu state = iota
@@ -28,6 +42,7 @@ type Model struct {
 	finishModel *FinishModel
 	infoModel   *InfoModel
 	menuInit	bool
+	//statusMsg	string
 }
 
 func NewModel() Model {
@@ -62,13 +77,14 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			switch key {
 			case "enter":
 				if selected, ok := m.mainMenu.SelectedItem().(menuItem); ok {
-					switch selected {
+					switch selected.title {
 					case "Create":
 						m.state = stateCreate
 						m.createModel = NewCreateModel()
 					case "Finish":
 						m.state = stateFinish
 						m.finishModel = NewFinishModel()
+						//m.finishModel.Init()
 					case "Info":
 						m.state = stateInfo
 						m.infoModel = NewInfoModel()
@@ -86,7 +102,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			case "i", "I":
 				m.state = stateInfo
 				m.infoModel = NewInfoModel()
-			case "e", "E":
+			case "e", "E", "q", "esc":
 				m.state = stateExit
 				return m, tea.Quit
 			}
@@ -95,10 +111,19 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case stateCreate:
 		updatedModel, cmd := m.createModel.Update(msg)
 		m.createModel = updatedModel.(*CreateModel)
-		switch msg.(type) {
+		switch msg := msg.(type) {
+		case ValidateErrorMsg:
+			m.createModel.statusMsg = fmt.Sprintf("Validation failed: %s", msg.err.Error())
+			return m, nil
+		case CreateResultErrorMsg:
+			m.createModel.statusMsg = fmt.Sprintf("Error creating CSR: %s", msg.err.Error())
+			return m, nil
 		case BackToMenuMsg:
 			m.state = stateMainMenu
 			m.createModel = nil // cleans up resources
+			return m, nil
+		case SuccessMsg:
+			m.createModel.statusMsg = strings.Join(msg.logs,"\n")
 			return m, nil
 		}
 		//return m.createModel.Update(msg)
@@ -106,6 +131,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case stateFinish:
 		updatedModel, cmd := m.finishModel.Update(msg)
 		m.finishModel = updatedModel.(*FinishModel)
+		//m.finishModel.Init()
 		switch msg.(type) {
 		case BackToMenuMsg:
 			m.state = stateMainMenu
@@ -145,6 +171,7 @@ func (m Model) View() string {
 	case stateInfo:
 		return m.infoModel.View()
 	default:
-		return "Exiting...\n"
+		//return "Exiting...\n"
+		return ""
 	}
 }

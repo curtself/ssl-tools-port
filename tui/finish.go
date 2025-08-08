@@ -1,12 +1,110 @@
-// tui/finish.go
 package tui
 
-import tea "github.com/charmbracelet/bubbletea"
+import (
+	//"fmt"
+	"fmt"
+	"os"
+	"path/filepath"
+	"strings"
 
-type FinishModel struct {}
+	"github.com/charmbracelet/bubbles/filepicker"
+	"github.com/charmbracelet/bubbles/textinput"
+	tea "github.com/charmbracelet/bubbletea"
+	"ssl-tools/internal/certsvc"
+	"ssl-tools/internal/options"
+)
+
+type finishFocus int
+
+const (
+	focusCert finishFocus = iota
+	focusKey
+	focusPfx
+	focusPassword
+	focusChain
+	focusRoot
+	focusFinish
+	focusBack
+	focusTotal
+)
+const (
+	fieldPfx      = 0
+	fieldPassword = 1
+)
+
+type FinishModel struct {
+	certPicker       filepicker.Model
+	certPickerOpened bool
+	keyPicker        filepicker.Model
+	keyPickerOpened  bool
+	selectedCert     string
+	selectedKey      string
+	keyWasGuessed    bool
+	pfxInput         textinput.Model
+	password         textinput.Model
+	includeChain     bool
+	includeRoot      bool
+	focused          finishFocus
+	editing          bool
+	err              error
+	message          string
+}
 
 func NewFinishModel() *FinishModel {
-	return &FinishModel{}
+	certPicker := filepicker.New()
+	//certPicker.AllowedTypes = []string{".crt", ".cer", ".pem"}
+	//certPicker.AllowedTypes = nil
+	certPicker.CurrentDirectory = "/home/cself/projects/ssl-tools-port/"
+	certPicker.AutoHeight = false
+	certPicker.SetHeight(0)
+	//certPicker.SetHeight(10)
+
+	keyPicker := filepicker.New()
+	//keyPicker.AllowedTypes = []string{".key", ".pem"}
+	//keyPicker.AllowedTypes = nil
+	keyPicker.CurrentDirectory = "/home/cself/projects/ssl-tools-port/"
+	keyPicker.AutoHeight = false
+	keyPicker.SetHeight(0)
+	//keyPicker.SetHeight(10)
+
+	pfxInput := textinput.New()
+	pfxInput.Placeholder = "output.pfx"
+	pfxInput.CharLimit = 256
+	pfxInput.Width = FieldWidth
+	pfxInput.Prompt = ""
+
+	password := textinput.New()
+	password.Placeholder = "optional"
+	password.EchoMode = textinput.EchoPassword
+	password.Prompt = ""
+
+	m := FinishModel{
+		certPicker:   certPicker,
+		keyPicker:    keyPicker,
+		pfxInput:     pfxInput,
+		password:     password,
+		includeChain: false,
+		includeRoot:  false,
+		editing:      false,
+		focused:      focusCert,
+	}
+
+	//m.updateFocus()
+	return &m
+}
+
+func (m *FinishModel) updateFocus() {
+	m.pfxInput.Blur()
+	m.password.Blur()
+
+	if m.editing {
+		switch m.focused {
+		case focusPfx:
+			m.pfxInput.Focus()
+		case focusPassword:
+			m.password.Focus()
+		}
+	}
 }
 
 func (m *FinishModel) Init() tea.Cmd {
@@ -14,26 +112,333 @@ func (m *FinishModel) Init() tea.Cmd {
 }
 
 func (m *FinishModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+	var cmds []tea.Cmd
+	var cmd tea.Cmd
+
 	switch msg := msg.(type) {
+	case tea.WindowSizeMsg:
+		// Optional: implement window responsiveness
+		m.certPicker, cmd = m.certPicker.Update(msg)
+		cmds = append(cmds, cmd)
+		m.keyPicker, cmd = m.keyPicker.Update(msg)
+		cmds = append(cmds, cmd)
 	case tea.KeyMsg:
 		switch msg.String() {
-		case "q", "ctrl+c":
-			return m.handleBack()
+		case "ctrl+c", "q", "esc":
+			if !m.editing {
+				// add the back handler to be processed
+				cmds = append(cmds, tea.Sequence(func() tea.Msg {
+					_, cmd := m.handleBack()
+					return tea.Cmd(cmd)()
+				}))
+			}
+			// handle escape when either picker are opened
+			if m.certPickerOpened {
+				m.certPickerOpened = false
+				// handle closing cert picker, or?
+			}
+			if m.keyPickerOpened {
+				m.keyPickerOpened = false
+			}
+
+		case "up", "k":
+			if !m.certPickerOpened && !m.keyPickerOpened {
+				if !m.editing {
+					m.focused--
+					if m.focused < 0 {
+						m.focused = focusTotal - 1
+					}
+					m.updateFocus()
+				}
+			}
+			// don't return yet, let messages bubble down
+			//return m, nil
+
+		case "down", "j":
+			if !m.certPickerOpened && !m.keyPickerOpened {
+				if !m.editing {
+					m.focused = (m.focused + 1) % focusTotal
+					m.updateFocus()
+				}
+			}
+			// don't return yet, let messages bubble down
+			//return m, nil
+
+		case "enter":
+			if m.editing {
+				m.editing = false
+				m.updateFocus()
+				// not sure if this should be here, it wasn't before
+				cmds = append(cmds, textinput.Blink)
+			}
+
+			if !m.certPickerOpened && !m.keyPickerOpened {
+				switch m.focused {
+				case focusCert:
+					m.certPickerOpened = true
+					m.certPicker.SetHeight(10)
+					cmd := m.certPicker.Init()
+					cmds = append(cmds, cmd)
+					//m.updateFocus()
+				case focusKey:
+					m.keyPickerOpened = true
+					m.keyPicker.SetHeight(10)
+					m.keyPicker.AutoHeight = true
+					cmd := m.keyPicker.Init()
+					cmds = append(cmds, cmd)
+					//m.updateFocus()
+				case focusPfx, focusPassword:
+					m.editing = true
+					m.updateFocus()
+					cmds = append(cmds, textinput.Blink)
+					//return m, textinput.Blink
+				case focusChain:
+					m.includeChain = !m.includeChain
+					if !m.includeChain {
+						m.includeRoot = false
+					}
+				case focusRoot:
+					if m.includeChain {
+						m.includeRoot = !m.includeRoot
+					}
+				case focusFinish:
+					cmds = append(cmds, tea.Sequence(func() tea.Msg {
+						_, cmd := m.handleFinish()
+						return tea.Cmd(cmd)()
+					}))
+
+					//return m.handleFinish()
+				case focusBack:
+					cmds = append(cmds, tea.Sequence(func() tea.Msg {
+						_, cmd := m.handleBack()
+						return tea.Cmd(cmd)()
+					}))
+
+					//return m.handleBack()
+				}
+			} else {
+				// cert picker is opened, so we need to select a file...
+				if m.certPickerOpened {
+					if didSelect, path := m.certPicker.DidSelectFile(msg); didSelect {
+						m.selectedCert = path
+						m.certPicker.SetHeight(0)
+						m.certPickerOpened = false
+					}
+				}
+				// key picker is opened, so we need to select a file...
+				if m.keyPickerOpened {
+					if didSelect, path := m.keyPicker.DidSelectFile(msg); didSelect {
+						m.selectedKey = path
+						m.keyPicker.SetHeight(0)
+						m.keyPickerOpened = false
+					}
+				}
+				//m.certPicker, cmd = m.certPicker.Update(msg)
+				//cmds = append(cmds, cmd)
+				//return m, cmd
+			}
+			//if m.selectedCert != "" {
+			//	m.certPickerOpened = false
+			//}
+		}
+
+	}
+
+	m.certPicker, cmd = m.certPicker.Update(msg)
+	cmds = append(cmds, cmd)
+
+	m.keyPicker, cmd = m.keyPicker.Update(msg)
+	cmds = append(cmds, cmd)
+
+	if m.editing {
+		switch m.focused {
+		case focusPfx:
+			m.pfxInput, cmd = m.pfxInput.Update(msg)
+		case focusPassword:
+			m.password, cmd = m.password.Update(msg)
+		}
+		cmds = append(cmds, cmd)
+	}
+
+	certPicked, certFile := m.certPicker.DidSelectFile(msg)
+	if certPicked && m.selectedCert == "" {
+		m.selectedCert = certFile
+
+		guessKey := strings.TrimSuffix(certFile, filepath.Ext(certFile)) + ".key"
+		if _, err := os.Stat(guessKey); err == nil {
+			m.selectedKey = guessKey
+			m.keyWasGuessed = true
 		}
 	}
-	return m, nil
+
+	keyPicked, keyFile := m.keyPicker.DidSelectFile(msg)
+	if keyPicked && m.selectedKey == "" {
+		m.selectedKey = keyFile
+		m.keyWasGuessed = false
+	}
+
+	return m, tea.Batch(cmds...)
 }
 
+func (m *FinishModel) renderField(label string, inp textinput.Model, idx finishFocus) string {
+	focused := m.focused == idx
+	style := BlurredStyle
+	if focused {
+		style = FocusedStyle
+	}
+
+	// if editing, show the input.View()
+	if m.editing && focused {
+		return fmt.Sprintf("%s %s\n", LabelStyle.Render(label+":"),
+			inp.View())
+	}
+
+	// else show label and value with cursor indicator if focused
+	cursor := " "
+	if focused {
+		cursor = ">"
+	}
+	val := inp.Value()
+	if val == "" {
+		val = "<none>"
+	}
+	return fmt.Sprintf("%s %s %s\n", CursorStyle.Render(cursor), style.Render(label+":"), style.Render(val))
+}
+
+func (m *FinishModel) View() string {
+	var b strings.Builder
+
+	cpMsg := "Choose cert file"
+	cpCursor := " "
+	if m.certPickerOpened {
+		cpMsg = "Cert Picker Open"
+	}
+	cStyle := LabelStyle
+	if m.focused == focusCert {
+		cStyle = FocusedStyle
+		cpCursor = ">"
+	}
+	if m.selectedCert == "" {
+		b.WriteString(fmt.Sprintf("%s %s\n",CursorStyle.Render(cpCursor), cStyle.Render(cpMsg)))
+	} else {
+		b.WriteString(fmt.Sprintf("%s %s\n",CursorStyle.Render(cpCursor), cStyle.Render("["+m.selectedCert+"]")))
+	}
+	// maybe only show this if certPickerOpened
+	if m.certPickerOpened {
+		b.WriteString(m.certPicker.View() + "\n")
+	}
+
+	kpMsg := "Choose private key file"
+	kpCursor := " "
+	if m.keyPickerOpened {
+		kpMsg = "Key Picker Open"
+	}
+	kStyle := LabelStyle
+	if m.focused == focusKey {
+		kStyle = FocusedStyle
+		kpCursor = ">"
+	}
+	if m.selectedKey == "" {
+		b.WriteString(fmt.Sprintf("%s %s\n",CursorStyle.Render(kpCursor),kStyle.Render(kpMsg)))
+	} else {
+		b.WriteString(fmt.Sprintf("%s %s\n",CursorStyle.Render(kpCursor),kStyle.Render("["+m.selectedKey+"]")))
+	}
+	// maybe only show this if keyPickerOpened
+	if m.keyPickerOpened {
+		b.WriteString(m.keyPicker.View() + "\n")
+	}
+
+	// **************** PFX field *********************
+	b.WriteString(m.renderField("Pfx File", m.pfxInput, focusPfx))
+	/*
+		b.WriteString(LabelStyle.Render("Step 3: PFX Options") + "\n")
+
+		if m.focused == focusPfx {
+			b.WriteString(FocusedStyle.Render("PFX File: ") + m.pfxInput.View() + "\n")
+		} else {
+			b.WriteString(BlurredStyle.Render("PFX File: ") + m.pfxInput.View() + "\n")
+		}
+	*/
+
+	// **************** Password field *********************
+	b.WriteString(m.renderField("Password", m.password, focusPassword))
+	/*
+	if m.focused == focusPassword {
+		b.WriteString(FocusedStyle.Render("Password: ") + m.password.View() + "\n")
+	} else {
+		b.WriteString(BlurredStyle.Render("Password: ") + m.password.View() + "\n")
+	}
+	*/
+
+	chainLabel := "[ ] Include certificate chain"
+	if m.includeChain {
+		chainLabel = "[✓] Include certificate chain"
+	}
+	if m.focused == focusChain {
+		b.WriteString(FocusedStyle.Render(chainLabel) + "\n")
+	} else {
+		b.WriteString(BlurredStyle.Render(chainLabel) + "\n")
+	}
+
+	rootLabel := "[ ] Include root certificate"
+	if m.includeRoot {
+		rootLabel = "[✓] Include root certificate"
+	}
+	if !m.includeChain {
+		rootLabel += " (requires chain)"
+	}
+	if m.focused == focusRoot {
+		b.WriteString(FocusedStyle.Render(rootLabel) + "\n")
+	} else {
+		b.WriteString(BlurredStyle.Render(rootLabel) + "\n")
+	}
+
+	if m.focused == focusFinish {
+		b.WriteString(ButtonFocusedStyle.Render("Finish") + "\n")
+	} else {
+		b.WriteString(ButtonBlurredStyle.Render("Finish") + "\n")
+	}
+
+	if m.focused == focusBack {
+		b.WriteString(ButtonFocusedStyle.Render("Back to Menu") + "\n")
+	} else {
+		b.WriteString(ButtonBlurredStyle.Render("Back to Menu") + "\n")
+	}
+
+	return b.String()
+}
+
+// handleBack sends a Quit or a custom Msg to parent model to return to main menu
 func (m *FinishModel) handleBack() (tea.Model, tea.Cmd) {
-	// TODO: return a custom Msg so parent Model can switch back to main menu
-	// For now just quit to demonstrate:
-	//return m, tea.Quit
 	return m, func() tea.Msg {
 		return BackToMenuMsg{}
 	}
 }
 
-func (m *FinishModel) View() string {
-	return "[Finish Certificate] Coming soon...\n"
-}
+func (m *FinishModel) handleFinish() (tea.Model, tea.Cmd) {
+	opts := options.FinishOptions{
+		Certificate: m.selectedCert,
+		Key:         m.selectedKey,
+		PfxFile:     m.pfxInput.Value(),
+		Password:    m.password.Value(),
+		Chain:       m.includeChain,
+		IncludeRoot: m.includeRoot,
+		Verbose:     false,
+	}
 
+	svc := certsvc.New()
+	result, err := svc.FinishCSR(opts)
+	if err != nil {
+		m.err = err
+		return m, nil
+	}
+	if opts.PfxFile != "" {
+		result.FileName = opts.PfxFile
+	}
+	if err := svc.SavePFXdto(result); err != nil {
+		m.err = err
+	} else {
+		m.message = "PFX created successfully."
+	}
+	return m, nil
+}
