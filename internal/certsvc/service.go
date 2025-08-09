@@ -148,7 +148,8 @@ func (c *CertificateService) SaveCSRdto(dto *models.CSRdto) ([]string, error) {
 	return logs,nil
 }
 
-func (c *CertificateService) SavePFXdto(dto *models.PFXdto) error {
+func (c *CertificateService) SavePFXdto(dto *models.PFXdto) ([]string, error) {
+	var logs []string
 	var pfxFile string
 	if dto.FileName == "" {
 		pfxFile = fmt.Sprintf("%s.pfx", dto.CommonName)
@@ -160,9 +161,9 @@ func (c *CertificateService) SavePFXdto(dto *models.PFXdto) error {
 	defer f.Close()
 	byteCount, err := f.Write(dto.CertificateData)
 	check(err)
-	fmt.Printf("wrote %d bytes to %s\n", byteCount, pfxFile)
+	logs = append(logs, fmt.Sprintf("wrote %d bytes to %s\n", byteCount, pfxFile))
 
-	return nil
+	return logs,nil
 }
 
 /*

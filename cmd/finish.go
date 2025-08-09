@@ -32,8 +32,12 @@ var finishCmd = &cobra.Command{
 			result.FileName = finishOpts.PfxFile
 		}
 		//fmt.Printf("Returned the PFXdto as %+v\n", result)
-		if err := svc.SavePFXdto(result); err != nil {
+		outputLogs, err := svc.SavePFXdto(result)
+		if err != nil {
 			return err
+		}
+		for _, line := range outputLogs {
+			fmt.Printf("%s\n", line)
 		}
 		return nil
 	},

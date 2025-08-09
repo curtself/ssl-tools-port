@@ -9,6 +9,7 @@ import (
 
 	"github.com/charmbracelet/bubbles/filepicker"
 	"github.com/charmbracelet/bubbles/textinput"
+	"github.com/charmbracelet/lipgloss"
 	tea "github.com/charmbracelet/bubbletea"
 	"ssl-tools/internal/certsvc"
 	"ssl-tools/internal/options"
@@ -47,7 +48,8 @@ type FinishModel struct {
 	focused          finishFocus
 	editing          bool
 	err              error
-	message          string
+	success          bool
+	statusMsg        string
 }
 
 func NewFinishModel() *FinishModel {
@@ -170,78 +172,82 @@ func (m *FinishModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.updateFocus()
 				// not sure if this should be here, it wasn't before
 				cmds = append(cmds, textinput.Blink)
-			}
-
-			if !m.certPickerOpened && !m.keyPickerOpened {
-				switch m.focused {
-				case focusCert:
-					m.certPickerOpened = true
-					m.certPicker.SetHeight(10)
-					cmd := m.certPicker.Init()
-					cmds = append(cmds, cmd)
-					//m.updateFocus()
-				case focusKey:
-					m.keyPickerOpened = true
-					m.keyPicker.SetHeight(10)
-					m.keyPicker.AutoHeight = true
-					cmd := m.keyPicker.Init()
-					cmds = append(cmds, cmd)
-					//m.updateFocus()
-				case focusPfx, focusPassword:
-					m.editing = true
-					m.updateFocus()
-					cmds = append(cmds, textinput.Blink)
-					//return m, textinput.Blink
-				case focusChain:
-					m.includeChain = !m.includeChain
-					if !m.includeChain {
-						m.includeRoot = false
-					}
-				case focusRoot:
-					if m.includeChain {
-						m.includeRoot = !m.includeRoot
-					}
-				case focusFinish:
-					cmds = append(cmds, tea.Sequence(func() tea.Msg {
-						_, cmd := m.handleFinish()
-						return tea.Cmd(cmd)()
-					}))
-
-					//return m.handleFinish()
-				case focusBack:
-					cmds = append(cmds, tea.Sequence(func() tea.Msg {
-						_, cmd := m.handleBack()
-						return tea.Cmd(cmd)()
-					}))
-
-					//return m.handleBack()
-				}
 			} else {
-				// cert picker is opened, so we need to select a file...
-				if m.certPickerOpened {
-					if didSelect, path := m.certPicker.DidSelectFile(msg); didSelect {
-						m.selectedCert = path
-						m.certPicker.SetHeight(0)
-						m.certPickerOpened = false
-					}
-				}
-				// key picker is opened, so we need to select a file...
-				if m.keyPickerOpened {
-					if didSelect, path := m.keyPicker.DidSelectFile(msg); didSelect {
-						m.selectedKey = path
-						m.keyPicker.SetHeight(0)
-						m.keyPickerOpened = false
-					}
-				}
-				//m.certPicker, cmd = m.certPicker.Update(msg)
-				//cmds = append(cmds, cmd)
-				//return m, cmd
-			}
-			//if m.selectedCert != "" {
-			//	m.certPickerOpened = false
-			//}
-		}
+				// neither of the pickers are opened
+				if !m.certPickerOpened && !m.keyPickerOpened {
+					switch m.focused {
+					case focusCert:
+						m.certPickerOpened = true
+						m.certPicker.SetHeight(10)
+						cmd := m.certPicker.Init()
+						cmds = append(cmds, cmd)
+						//m.updateFocus()
+					case focusKey:
+						m.keyPickerOpened = true
+						m.keyPicker.SetHeight(10)
+						m.keyPicker.AutoHeight = true
+						cmd := m.keyPicker.Init()
+						cmds = append(cmds, cmd)
+						//m.updateFocus()
+					case focusPfx:
+						m.editing = true
+						m.updateFocus()
+						var cmd tea.Cmd
+						m.pfxInput, cmd = m.pfxInput.Update(msg)
+						cmds = append(cmds, textinput.Blink)
+						cmds = append(cmds, cmd)
+					case focusPassword:
+						m.editing = true
+						m.updateFocus()
+						var cmd tea.Cmd
+						m.password, cmd = m.password.Update(msg)
+						cmds = append(cmds, textinput.Blink)
+						cmds = append(cmds, cmd)
+					case focusChain:
+						m.includeChain = !m.includeChain
+						if !m.includeChain {
+							m.includeRoot = false
+						}
+					case focusRoot:
+						if m.includeChain {
+							m.includeRoot = !m.includeRoot
+						}
+					case focusFinish:
+						/*
+							cmds = append(cmds, tea.Sequence(func() tea.Msg {
+								_, cmd := m.handleFinish()
+								return tea.Cmd(cmd)()
+							}))
+						*/
+						// For the finish option, just return the finish handler
+						return m.handleFinish()
 
+					case focusBack:
+						cmds = append(cmds, tea.Sequence(func() tea.Msg {
+							_, cmd := m.handleBack()
+							return tea.Cmd(cmd)()
+						}))
+					}
+				} else {
+					// cert picker is opened, so we need to select a file...
+					if m.certPickerOpened {
+						if didSelect, path := m.certPicker.DidSelectFile(msg); didSelect {
+							m.selectedCert = path
+							m.certPicker.SetHeight(0)
+							m.certPickerOpened = false
+						}
+					}
+					// key picker is opened, so we need to select a file...
+					if m.keyPickerOpened {
+						if didSelect, path := m.keyPicker.DidSelectFile(msg); didSelect {
+							m.selectedKey = path
+							m.keyPicker.SetHeight(0)
+							m.keyPickerOpened = false
+						}
+					}
+				}
+			}
+		}
 	}
 
 	m.certPicker, cmd = m.certPicker.Update(msg)
@@ -250,6 +256,7 @@ func (m *FinishModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	m.keyPicker, cmd = m.keyPicker.Update(msg)
 	cmds = append(cmds, cmd)
 
+	// handle editing inputs to fields (pfx and pasword)
 	if m.editing {
 		switch m.focused {
 		case focusPfx:
@@ -319,9 +326,9 @@ func (m *FinishModel) View() string {
 		cpCursor = ">"
 	}
 	if m.selectedCert == "" {
-		b.WriteString(fmt.Sprintf("%s %s\n",CursorStyle.Render(cpCursor), cStyle.Render(cpMsg)))
+		b.WriteString(fmt.Sprintf("%s %s\n", CursorStyle.Render(cpCursor), cStyle.Render(cpMsg)))
 	} else {
-		b.WriteString(fmt.Sprintf("%s %s\n",CursorStyle.Render(cpCursor), cStyle.Render("["+m.selectedCert+"]")))
+		b.WriteString(fmt.Sprintf("%s %s\n", CursorStyle.Render(cpCursor), cStyle.Render("["+m.selectedCert+"]")))
 	}
 	// maybe only show this if certPickerOpened
 	if m.certPickerOpened {
@@ -339,9 +346,9 @@ func (m *FinishModel) View() string {
 		kpCursor = ">"
 	}
 	if m.selectedKey == "" {
-		b.WriteString(fmt.Sprintf("%s %s\n",CursorStyle.Render(kpCursor),kStyle.Render(kpMsg)))
+		b.WriteString(fmt.Sprintf("%s %s\n", CursorStyle.Render(kpCursor), kStyle.Render(kpMsg)))
 	} else {
-		b.WriteString(fmt.Sprintf("%s %s\n",CursorStyle.Render(kpCursor),kStyle.Render("["+m.selectedKey+"]")))
+		b.WriteString(fmt.Sprintf("%s %s\n", CursorStyle.Render(kpCursor), kStyle.Render("["+m.selectedKey+"]")))
 	}
 	// maybe only show this if keyPickerOpened
 	if m.keyPickerOpened {
@@ -363,11 +370,11 @@ func (m *FinishModel) View() string {
 	// **************** Password field *********************
 	b.WriteString(m.renderField("Password", m.password, focusPassword))
 	/*
-	if m.focused == focusPassword {
-		b.WriteString(FocusedStyle.Render("Password: ") + m.password.View() + "\n")
-	} else {
-		b.WriteString(BlurredStyle.Render("Password: ") + m.password.View() + "\n")
-	}
+		if m.focused == focusPassword {
+			b.WriteString(FocusedStyle.Render("Password: ") + m.password.View() + "\n")
+		} else {
+			b.WriteString(BlurredStyle.Render("Password: ") + m.password.View() + "\n")
+		}
 	*/
 
 	chainLabel := "[ ] Include certificate chain"
@@ -404,6 +411,13 @@ func (m *FinishModel) View() string {
 	} else {
 		b.WriteString(ButtonBlurredStyle.Render("Back to Menu") + "\n")
 	}
+	if m.statusMsg != "" {
+		if m.success {
+			b.WriteString(lipgloss.NewStyle().Foreground(lipgloss.Color("10")).Render("\n" + m.statusMsg + "\n"))
+		} else {
+			b.WriteString(lipgloss.NewStyle().Foreground(lipgloss.Color("9")).Render("\n" + m.statusMsg + "\n"))
+		}
+	}
 
 	return b.String()
 }
@@ -413,6 +427,30 @@ func (m *FinishModel) handleBack() (tea.Model, tea.Cmd) {
 	return m, func() tea.Msg {
 		return BackToMenuMsg{}
 	}
+}
+
+func wrapText(s string, limit int) string {
+	if len(s) <= limit {
+		return s
+	}
+
+	var b strings.Builder
+	words := strings.Fields(s)
+	lineLen := 0
+
+	for _, w := range words {
+		if lineLen+len(w)+1 > limit {
+			b.WriteString("\n")
+			lineLen = 0
+		} else if lineLen > 0 {
+			b.WriteString(" ")
+			lineLen++
+		}
+		b.WriteString(w)
+		lineLen += len(w)
+	}
+
+	return b.String()
 }
 
 func (m *FinishModel) handleFinish() (tea.Model, tea.Cmd) {
@@ -425,20 +463,41 @@ func (m *FinishModel) handleFinish() (tea.Model, tea.Cmd) {
 		IncludeRoot: m.includeRoot,
 		Verbose:     false,
 	}
+	if err := opts.Validate(); err != nil {
+		m.err = err
+		m.statusMsg = fmt.Sprintf("Error validating options: %s", err)
+		return m, func() tea.Msg {
+			return ResultErrorMsg{err:err}
+		}
+	}
 
 	svc := certsvc.New()
 	result, err := svc.FinishCSR(opts)
 	if err != nil {
 		m.err = err
-		return m, nil
+		return m, func() tea.Msg {
+			return ResultErrorMsg{err:err}
+		}
+		
 	}
 	if opts.PfxFile != "" {
+		// TODO - we should use the full path of the cert's directory instead of just name
 		result.FileName = opts.PfxFile
 	}
-	if err := svc.SavePFXdto(result); err != nil {
+	outputLines, err := svc.SavePFXdto(result)
+	if err != nil {
 		m.err = err
-	} else {
-		m.message = "PFX created successfully."
+		return m, func() tea.Msg {
+			return ResultErrorMsg{err: err}
+		}
 	}
-	return m, nil
+	m.success = true
+	/* this debug code will add arguments to output
+	wrappedLines := wrapText( fmt.Sprintf("%+v",opts),100)
+	outputLines = append(outputLines, "Arguments given: ")
+	outputLines = append(outputLines, wrappedLines)
+	*/
+	return m, func() tea.Msg {
+		return SuccessMsg{logs: outputLines}
+	}
 }

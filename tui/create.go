@@ -77,6 +77,7 @@ func (m *CreateModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tea.KeyMsg:
 		switch msg.String() {
 
+			// TODO - handle "q" differently - it currently break on edit
 		case "ctrl+c", "q", "esc":
 			return m.handleBack()
 
@@ -305,13 +306,13 @@ func (m *CreateModel) handleCreate() (tea.Model, tea.Cmd) {
 	result, err := svc.CreateCSR(createOpts)
 	if err != nil {
 		return m, func() tea.Msg {
-			return CreateResultErrorMsg{err:err}
+			return ResultErrorMsg{err:err}
 		}
 	}
 	outputLines, err := svc.SaveCSRdto(result)
 	if err != nil {
 		return m, func() tea.Msg {
-			return CreateResultErrorMsg{err:err}
+			return ResultErrorMsg{err:err}
 		}
 	}
 	m.success = true
