@@ -8,7 +8,7 @@ import (
 	"encoding/pem"
 	"errors"
 	"fmt"
-	"log"
+	//"log"
 	"net/url"
 	"os"
 	"ssl-tools/internal/certformat"
@@ -234,7 +234,10 @@ func (c *CertificateService) FinishCSR(opts options.FinishOptions) (*models.PFXd
 	// Show info if in verbose mode
 	if opts.Verbose {
 		fmt.Printf("Loaded %d certs\n", len(certs))
-		certinfo.LogChainSummary(certs)
+		outputLines := certinfo.LogChainSummary(certs)
+		for _, line := range outputLines {
+			fmt.Println(line)
+		}
 	}
 
 	// Identify end-entity certificate
@@ -415,7 +418,7 @@ func loadCsrFromFile(path string) (*x509.CertificateRequest, error) {
 	block, _ := pem.Decode(pemBytes)
 	if block != nil {
 		if block.Type != "CERTIFICATE REQUEST" {
-			fmt.Printf("failed to get CSR, instead got %s\n", block.Type)
+			//fmt.Printf("failed to get CSR, instead got %s\n", block.Type)
 			return nil, errors.New("bad PEM block type")
 		}
 	} else {
@@ -480,7 +483,8 @@ func loadBinaryCertsFromFile(path string, pass string) ([]*x509.Certificate, err
 }
 
 // info section
-func (c *CertificateService) GetInfo(opts options.InfoOptions) error {
+func (c *CertificateService) GetInfo(opts options.InfoOptions) ([]string, error) {
+	var logs []string
 	if len(opts.Certificates) > 0 {
 		for _, path := range opts.Certificates {
 			format := certformat.CertificateFormat.Detect(path)
@@ -491,20 +495,23 @@ func (c *CertificateService) GetInfo(opts options.InfoOptions) error {
 				if err == nil {
 					if !opts.ShortSummary {
 						for _, cert := range certs {
-							certinfo.LogCertInfo(cert)
+							logs = append(logs, certinfo.LogCertInfo(cert)...)
 						}
 					}
-					fmt.Println(strings.Repeat("-", 92))
-					fmt.Println("Chain summary")
-					certinfo.LogChainSummary(certs)
+					//fmt.Println(strings.Repeat("-", 92))
+					//fmt.Println("Chain summary")
+					logs = append(logs, strings.Repeat("-",92))
+					logs = append(logs, "Chain summary")
+					logs = append(logs, certinfo.LogChainSummary(certs)...)
 					/*
 						for i, cert := range certs {
 							certinfo.LogCertSummary(cert, i)
 						}
 					*/
 				} else {
-					fmt.Println(fmt.Errorf("reading certificates failed: %w", err))
-					return err
+					//fmt.Println(fmt.Errorf("reading certificates failed: %w", err))
+					logs = append(logs, fmt.Sprintf("reading certificates failed: %v", errors.Unwrap(err)))
+					return logs, err
 				}
 			case certformat.PEM:
 				//fmt.Println("PEM certificate file found: ", path)
@@ -512,34 +519,38 @@ func (c *CertificateService) GetInfo(opts options.InfoOptions) error {
 				if err == nil {
 					if !opts.ShortSummary {
 						for _, cert := range certs {
-							certinfo.LogCertInfo(cert)
+							logs = append(logs, certinfo.LogCertInfo(cert)...)
 						}
 					}
-					fmt.Println(strings.Repeat("-", 92))
-					fmt.Println("Chain summary")
-					certinfo.LogChainSummary(certs)
+					//fmt.Println(strings.Repeat("-", 92))
+					//fmt.Println("Chain summary")
+					logs = append( logs, strings.Repeat("-", 92))
+					logs = append( logs, "Chain summary")
+					logs = append( logs, certinfo.LogChainSummary(certs)...)
 					/*
 						for i, cert := range certs {
 							certinfo.LogCertSummary(cert, i)
 						}
 					*/
 				} else {
-					fmt.Println(fmt.Errorf("reading certificates failed: %W", err))
-					return err
+					//fmt.Println(fmt.Errorf("reading certificates failed: %w", err))
+					logs = append(logs, fmt.Sprintf("reading certificates failed: %v", errors.Unwrap(err)))
+					return logs, err
 				}
 			}
 		}
 	}
 	if opts.CSR != "" {
-		fmt.Printf("reading CSR from file: %s\n", opts.CSR)
+		//fmt.Printf("reading CSR from file: %s\n", opts.CSR)
+		logs = append(logs, fmt.Sprintf("reading CSR from file: %s", opts.CSR))
 		csr, err := loadCsrFromFile(opts.CSR)
 		if err != nil {
-			fmt.Println(fmt.Errorf("reading CSR failed: %W", err))
-			return err
+			//fmt.Println(fmt.Errorf("reading CSR failed: %w", err))
+			logs = append(logs, fmt.Sprintf("reading CSR failed: %v", errors.Unwrap(err)))
+			return logs, err
 		}
-		certinfo.LogCsrInfo(csr)
+		logs = append(logs, certinfo.LogCsrInfo(csr)...)
 	}
-	// TODO - add handling of hosts (similar to URLs)
 	if len(opts.URLs) > 0 {
 		for _, urlString := range opts.URLs {
 			if !strings.HasPrefix(urlString, "http") {
@@ -547,44 +558,51 @@ func (c *CertificateService) GetInfo(opts options.InfoOptions) error {
 			}
 			u, err := url.Parse(urlString)
 			if err != nil {
-				log.Fatal(err)
-				return err
+				//log.Fatal(err)
+				logs = append(logs, fmt.Sprintf("Error: %v", errors.Unwrap(err)))
+				return logs, err
 			}
 			host := u.Host
 			h := handshake.New(host, "")
 			certs, err := h.PerformHandshake()
-			fmt.Printf("Got host [%s] from options\n", host)
+			//fmt.Printf("Got host [%s] from options\n", host)
+			logs = append(logs, fmt.Sprintf("Got host [%s] from options", host))
 			if err == nil {
 				if !opts.ShortSummary {
 					for _, cert := range certs {
-						certinfo.LogCertInfo(cert)
+						logs = append(logs, certinfo.LogCertInfo(cert)...)
 					}
 				}
-				fmt.Println(strings.Repeat("-", 92))
-				fmt.Println("Chain summary")
-				certinfo.LogChainSummary(certs)
+				//fmt.Println(strings.Repeat("-", 92))
+				//fmt.Println("Chain summary")
+				logs = append(logs, strings.Repeat("-", 92))
+				logs = append(logs, "Chain summary")
+				logs = append(logs, certinfo.LogChainSummary(certs)...)
 				/*
 					for i, cert := range certs {
 						certinfo.LogCertSummary(cert, i)
 					}
 				*/
 			} else {
-				fmt.Println(fmt.Errorf("reading certificates failed: %w", err))
-				log.Fatal(err)
-				return err
+				//fmt.Println(fmt.Errorf("reading certificates failed: %w", err))
+				//log.Fatal(err)
+				logs = append(logs, fmt.Sprintf("reading certificates failed: %v", errors.Unwrap(err)))
+				return logs, err
 			}
 		}
 	}
 	if len(opts.Hosts) > 0 {
-		fmt.Println("reading certificates from host(s)")
+		//fmt.Println("reading certificates from host(s)")
+		logs = append(logs, "reading certificates from host(s)")
 		for k, v := range opts.Hosts {
 			if !strings.HasPrefix(k, "http") {
 				k = "https://" + k
 			}
 			u, err := url.Parse(k)
 			if err != nil {
-				log.Fatal(err)
-				return err
+				//log.Fatal(err)
+				logs = append(logs, fmt.Sprintf("Error parsing URL: %v", errors.Unwrap(err)))
+				return logs, err
 			}
 			host := u.Host
 			h := handshake.New(host, v)
@@ -592,18 +610,21 @@ func (c *CertificateService) GetInfo(opts options.InfoOptions) error {
 			if err == nil {
 				if !opts.ShortSummary {
 					for _, cert := range certs {
-						certinfo.LogCertInfo(cert)
+						logs = append(logs, certinfo.LogCertInfo(cert)...)
 					}
 				}
-				fmt.Println(strings.Repeat("-", 92))
-				fmt.Println("Chain summary")
-				certinfo.LogChainSummary(certs)
+				//fmt.Println(strings.Repeat("-", 92))
+				//fmt.Println("Chain summary")
+				logs = append(logs, strings.Repeat("-", 92))
+				logs = append(logs, "Chain summary")
+				logs = append(logs, certinfo.LogChainSummary(certs)...)
 			} else {
-				fmt.Println(fmt.Errorf("reading certificates failed: %w", err))
-				log.Fatal(err)
-				return err
+				//fmt.Println(fmt.Errorf("reading certificates failed: %w", err))
+				logs = append(logs, fmt.Sprintf("reading certificates failed: %v", errors.Unwrap(err)))
+				//log.Fatal(err)
+				return logs, err
 			}
 		}
 	}
-	return nil
+	return logs, nil
 }

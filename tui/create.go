@@ -7,7 +7,7 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/bubbles/textinput"
-	"github.com/charmbracelet/lipgloss"
+	//"github.com/charmbracelet/lipgloss"
 	"ssl-tools/internal/options"
 	"ssl-tools/internal/certsvc"
 )
@@ -73,14 +73,22 @@ func (m *CreateModel) Init() tea.Cmd {
 }
 
 func (m *CreateModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+
 	switch msg := msg.(type) {
 	case tea.KeyMsg:
 		switch msg.String() {
 
-			// TODO - handle "q" differently - it currently break on edit
-		case "ctrl+c", "q", "esc":
-			return m.handleBack()
-
+		case "ctrl+c", "esc":
+			// only send back signal if not editing a field
+			if !m.editing {
+				return m.handleBack()
+			}
+		case "q":
+			if m.editing {
+				return m.updateInputs(msg)
+			} else {
+				return m.handleBack()
+			}
 		case "up", "k":
 			if m.editing {
 				// pass key to textinput
@@ -165,9 +173,6 @@ func (m *CreateModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				return m.handleBack()
 			}
 		}
-
-	case tea.WindowSizeMsg:
-		// ignore for now
 	}
 
 	if m.editing {
@@ -218,9 +223,9 @@ func (m *CreateModel) View() string {
 
 	if m.statusMsg != "" {
 		if m.success {
-			b.WriteString( lipgloss.NewStyle().Foreground(lipgloss.Color("10")).Render("\n"+m.statusMsg+"\n"))
+			b.WriteString(MsgSuccessStyle.Render("\n"+m.statusMsg+"\n"))
 		} else {
-			b.WriteString( lipgloss.NewStyle().Foreground(lipgloss.Color("9")).Render("\n"+m.statusMsg+"\n"))
+			b.WriteString(MsgErrorStyle.Render("\n"+m.statusMsg+"\n"))
 		}
 	}
 	return b.String()

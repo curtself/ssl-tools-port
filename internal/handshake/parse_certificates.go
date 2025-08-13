@@ -3,7 +3,7 @@ package handshake
 import (
 	"crypto/x509"
 	"errors"
-	"fmt"
+	//"fmt"
 	//"os"
 )
 
@@ -68,7 +68,7 @@ func ParseCertificates(data []byte) ([]*x509.Certificate, error) {
 	var certDataLen int
 
 	variant := CheckVariant(data)
-	fmt.Printf("Parsing certificates from a %s response...\n", variant.VariantType)
+	//fmt.Printf("Parsing certificates from a %s response...\n", variant.VariantType)
 
 	switch variant.VariantType {
 	case "standard_tls12":
@@ -113,7 +113,7 @@ func ParseCertificates(data []byte) ([]*x509.Certificate, error) {
 
 		cert, err := x509.ParseCertificate(certBytes)
 		if err != nil {
-			fmt.Printf("Warning: failed to parse cert at offset %d: %v\n", index, err)
+			//fmt.Printf("Warning: failed to parse cert at offset %d: %v\n", index, err)
 			continue
 		}
 		certs = append(certs, cert)

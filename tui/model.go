@@ -96,6 +96,10 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					case "Info":
 						m.state = stateInfo
 						m.infoModel = NewInfoModel()
+						m.infoModel.Update(tea.WindowSizeMsg{
+							Width:  m.width,
+							Height: m.height,
+						})
 					case "Exit":
 						m.state = stateExit
 						return m, tea.Quit
@@ -110,6 +114,10 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			case "i", "I":
 				m.state = stateInfo
 				m.infoModel = NewInfoModel()
+				m.infoModel.Update(tea.WindowSizeMsg{
+					Width:  m.width,
+					Height: m.height,
+				})
 			case "e", "E", "q", "esc":
 				m.state = stateExit
 				return m, tea.Quit
@@ -157,13 +165,20 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case stateInfo:
 		updatedModel, cmd := m.infoModel.Update(msg)
 		m.infoModel = updatedModel.(*InfoModel)
-		switch msg.(type) {
+		switch msg := msg.(type) {
+		case ResultErrorMsg:
+			m.infoModel.statusMsg = fmt.Sprintf("Error getting info: %s", msg.err.Error())
+			m.infoModel.viewport.SetContent(m.infoModel.statusMsg)
+			return m, nil
 		case BackToMenuMsg:
 			m.state = stateMainMenu
 			m.infoModel = nil
 			return m, nil
+		case SuccessMsg:
+			m.infoModel.statusMsg = strings.Join(msg.logs, "\n")
+			m.infoModel.viewport.SetContent(m.infoModel.statusMsg)
+			return m, nil
 		}
-		//return m.infoModel.Update(msg)
 		return m, cmd
 	default:
 		return m, tea.Quit

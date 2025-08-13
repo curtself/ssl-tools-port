@@ -34,11 +34,14 @@ var infoCmd = &cobra.Command{
 		if err := infoOpts.Validate(); err != nil {
 			return fmt.Errorf("Validation error: %w", err)
 		}
-		//fmt.Printf("Arguments given %+v\n",infoOpts)
+		fmt.Printf("Arguments given %+v\n",infoOpts)
 		svc := certsvc.New()
-		err := svc.GetInfo(infoOpts)
+		outputLogs, err := svc.GetInfo(infoOpts)
 		if err != nil {
 			return fmt.Errorf("Error getting info: %w", err)
+		}
+		for _, line := range outputLogs {
+			fmt.Println(line)
 		}
 		return nil
 	},

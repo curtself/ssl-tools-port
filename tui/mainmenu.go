@@ -21,7 +21,7 @@ func NewMainMenu(width, height int) list.Model {
 		menuItem(menuItem{title:"Info",descr:"View certificate or CSR information",}),
 		menuItem(menuItem{title:"Exit"}),
 	}
-	l := list.New(items, list.NewDefaultDelegate(), width, height) // don't have width or height....
+	l := list.New(items, list.NewDefaultDelegate(), width, height) 
 	l.Title = "SSL Tools - Select Operation"
 	l.SetFilteringEnabled(false)
 	return l
