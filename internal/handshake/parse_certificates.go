@@ -7,6 +7,29 @@ import (
 	//"os"
 )
 
+type CheckVariantOptions struct {
+	ForceVariant bool
+}
+type CheckVariantOption func(*CheckVariantOptions)
+
+func WithForceVariant() CheckVariantOption {
+	return func(o *CheckVariantOptions) {
+		o.ForceVariant = true
+	}
+}
+
+func CheckVariant(data []byte, opts ...CheckVariantOption) VariantInfo {
+	options := CheckVariantOptions{
+		ForceVariant: false, // default
+	}
+
+	for _, opt := range opts {
+		opt(&options)
+	}
+
+	return checkVariantInternal(data, options)
+}
+
 // VariantInfo represents the detected variant of the TLS handshake
 type VariantInfo struct {
 	VariantType string
@@ -24,20 +47,22 @@ func indexOf(data []byte, val byte, fromIdx int) int {
 }
 
 // CheckVariant scans the data for known TLS 1.2 ServerHello certificate message variants
-func CheckVariant(data []byte) VariantInfo {
+func checkVariantInternal(data []byte, options CheckVariantOptions) VariantInfo {
 	// standard_tls12 detection
 	headMarker := indexOf(data, 0x16, 1) // skip first byte
 	headParseAttempts := 0
 
-	for headMarker != -1 {
-		if headParseAttempts > 60 || headMarker+5 >= len(data) {
-			break
+	if ! options.ForceVariant {
+		for headMarker != -1 {
+			if headParseAttempts > 60 || headMarker+5 >= len(data) {
+				break
+			}
+			if data[headMarker+5] == 0x0B {
+				return VariantInfo{"standard_tls12", headMarker}
+			}
+			headMarker = indexOf(data, 0x16, headMarker+1)
+			headParseAttempts++
 		}
-		if data[headMarker+5] == 0x0B {
-			return VariantInfo{"standard_tls12", headMarker}
-		}
-		headMarker = indexOf(data, 0x16, headMarker+1)
-		headParseAttempts++
 	}
 
 	// variant_tls12 detection
@@ -63,11 +88,33 @@ func CheckVariant(data []byte) VariantInfo {
 
 // ParseCertificates extracts the certificate chain from TLS 1.2 handshake response bytes
 func ParseCertificates(data []byte) ([]*x509.Certificate, error) {
+	variant := CheckVariant(data)
+
+	certs, err := parseCertificatesWithVariant(data, variant)
+	if err != nil {
+		return nil, err
+	}
+
+	// If standard parse failed, retry as forced variant
+	if variant.VariantType == "standard_tls12" && len(certs) == 0 {
+		variant = CheckVariant(data, WithForceVariant())
+		certs, err = parseCertificatesWithVariant(data, variant)
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	if len(certs) == 0 {
+		return nil, errors.New("no certificates parsed")
+	}
+	return certs, nil
+}
+
+func parseCertificatesWithVariant(data []byte, variant VariantInfo) ([]*x509.Certificate, error) {
 	var certs []*x509.Certificate
 	var index int
 	var certDataLen int
 
-	variant := CheckVariant(data)
 	//fmt.Printf("Parsing certificates from a %s response...\n", variant.VariantType)
 
 	switch variant.VariantType {
@@ -119,9 +166,6 @@ func ParseCertificates(data []byte) ([]*x509.Certificate, error) {
 		certs = append(certs, cert)
 	}
 
-	if len(certs) == 0 {
-		return nil, errors.New("no certificates parsed")
-	}
 	return certs, nil
 }
 
