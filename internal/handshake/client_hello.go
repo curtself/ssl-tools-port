@@ -4,8 +4,6 @@ import (
 	"bytes"
 	"crypto/rand"
 	"encoding/binary"
-	//"fmt"
-	//"os"
 	"time"
 )
 

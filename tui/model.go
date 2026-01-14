@@ -3,26 +3,34 @@ package tui
 
 import (
 	"fmt"
-	"strings"
 	"github.com/charmbracelet/bubbles/list"
 	tea "github.com/charmbracelet/bubbletea"
+	"strings"
 )
 
 type state int
 
 // BackToMenuMsg signals going back to the main menu.
 type BackToMenuMsg struct{}
+
 // ValidateErrorMsg signals there was an input error
 type ValidateErrorMsg struct {
-	err			error
+	err error
 }
+
 // CreateResultErrorMsg signals something went wrong creating CSR
 type CreateResultErrorMsg struct {
-	err			error
+	err error
 }
+
+// ResultErrorMsg signals something went wrong with service action
+type ResultErrorMsg struct {
+	err error
+}
+
 // SuccessMsg signals a process complete with output
 type SuccessMsg struct {
-	logs		[]string
+	logs []string
 }
 
 const (
@@ -41,7 +49,7 @@ type Model struct {
 	createModel *CreateModel
 	finishModel *FinishModel
 	infoModel   *InfoModel
-	menuInit	bool
+	menuInit    bool
 	//statusMsg	string
 }
 
@@ -64,7 +72,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.width = msg.Width
 			m.height = msg.Height
 			if !m.menuInit {
-				m.mainMenu = NewMainMenu(m.width,m.height)
+				m.mainMenu = NewMainMenu(m.width, m.height)
 				m.menuInit = true
 			}
 			//m.mainMenu.SetSize(msg.Width, msg.Height)
@@ -88,6 +96,10 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					case "Info":
 						m.state = stateInfo
 						m.infoModel = NewInfoModel()
+						m.infoModel.Update(tea.WindowSizeMsg{
+							Width:  m.width,
+							Height: m.height,
+						})
 					case "Exit":
 						m.state = stateExit
 						return m, tea.Quit
@@ -102,6 +114,10 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			case "i", "I":
 				m.state = stateInfo
 				m.infoModel = NewInfoModel()
+				m.infoModel.Update(tea.WindowSizeMsg{
+					Width:  m.width,
+					Height: m.height,
+				})
 			case "e", "E", "q", "esc":
 				m.state = stateExit
 				return m, tea.Quit
@@ -115,7 +131,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case ValidateErrorMsg:
 			m.createModel.statusMsg = fmt.Sprintf("Validation failed: %s", msg.err.Error())
 			return m, nil
-		case CreateResultErrorMsg:
+		case ResultErrorMsg:
 			m.createModel.statusMsg = fmt.Sprintf("Error creating CSR: %s", msg.err.Error())
 			return m, nil
 		case BackToMenuMsg:
@@ -123,7 +139,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.createModel = nil // cleans up resources
 			return m, nil
 		case SuccessMsg:
-			m.createModel.statusMsg = strings.Join(msg.logs,"\n")
+			m.createModel.statusMsg = strings.Join(msg.logs, "\n")
 			return m, nil
 		}
 		//return m.createModel.Update(msg)
@@ -132,10 +148,16 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		updatedModel, cmd := m.finishModel.Update(msg)
 		m.finishModel = updatedModel.(*FinishModel)
 		//m.finishModel.Init()
-		switch msg.(type) {
+		switch msg := msg.(type) {
+		case ResultErrorMsg:
+			m.finishModel.statusMsg = fmt.Sprintf("Error creating PFX: %s", msg.err.Error())
+			return m, nil
 		case BackToMenuMsg:
 			m.state = stateMainMenu
 			m.finishModel = nil
+			return m, nil
+		case SuccessMsg:
+			m.finishModel.statusMsg = strings.Join(msg.logs, "\n")
 			return m, nil
 		}
 		//return m.finishModel.Update(msg)
@@ -143,13 +165,20 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case stateInfo:
 		updatedModel, cmd := m.infoModel.Update(msg)
 		m.infoModel = updatedModel.(*InfoModel)
-		switch msg.(type) {
+		switch msg := msg.(type) {
+		case ResultErrorMsg:
+			m.infoModel.statusMsg = fmt.Sprintf("Error getting info: %s", msg.err.Error())
+			m.infoModel.viewport.SetContent(m.infoModel.statusMsg)
+			return m, nil
 		case BackToMenuMsg:
 			m.state = stateMainMenu
 			m.infoModel = nil
 			return m, nil
+		case SuccessMsg:
+			m.infoModel.statusMsg = strings.Join(msg.logs, "\n")
+			m.infoModel.viewport.SetContent(m.infoModel.statusMsg)
+			return m, nil
 		}
-		//return m.infoModel.Update(msg)
 		return m, cmd
 	default:
 		return m, tea.Quit

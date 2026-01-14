@@ -1,5 +1,5 @@
 // cmd/ssl-tools-tui/main.go
-package main
+package ssl_tools_tui
 
 import (
 	"fmt"
@@ -9,7 +9,7 @@ import (
 	"ssl-tools/tui"
 )
 
-func main() {
+func RunTUI() {
 	p := tea.NewProgram(tui.NewModel(), tea.WithAltScreen())
 	if _,err := p.Run(); err != nil {
 		fmt.Println("Error running program", err)
