@@ -26,10 +26,14 @@ func (opts* InfoOptions) Validate() error {
 		return errors.New("you must provide at least one certificate, url, host, or CSR")
 	}
 	if opts.Password == "" {
-		if os.Getenv("sslpass") == "" {
+		if os.Getenv("sslpass") == "changeit" {
 			return errors.New("Password is not set")
+		} else if os.Getenv("sslpass") == "" {
+			opts.Password = "changeit"
+		} else {
+			opts.Password = os.Getenv("sslpass")
 		}
-		opts.Password = os.Getenv("sslpass")
+		//opts.Password = os.Getenv("sslpass")
 	}
 	return nil
 }
