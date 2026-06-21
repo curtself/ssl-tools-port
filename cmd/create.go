@@ -39,9 +39,13 @@ var createCmd = &cobra.Command{
 		//fmt.Printf("Returned the CSRdto as %+v\n", result)
 
         // Save the files
-        if err := svc.SaveCSRdto(result); err != nil {
+		outputLogs, err := svc.SaveCSRdto(result)
+        if err != nil {
             return err
         }
+		for _, line := range outputLogs {
+			fmt.Printf("%s\n", line)
+		}
 		/*
 		*/
 

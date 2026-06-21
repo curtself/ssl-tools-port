@@ -11,6 +11,7 @@ type FinishOptions struct {
 	Password		string
 	Chain			bool
 	IncludeRoot		bool
+	Verbose			bool
 }
 
 func (opts* FinishOptions) Validate() error {

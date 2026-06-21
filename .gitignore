@@ -12,6 +12,8 @@ bin
 *.der
 chain_details.txt
 *.bin
+*.hex
 tls12handshake_debug.txt
 serverHelloHex.txt
 ssl-tools
+certs/*
