@@ -2,9 +2,9 @@ package handshake
 
 import (
 	"crypto/x509"
-	"io"
 	"errors"
 	"fmt"
+	"io"
 	"net"
 	"time"
 )
@@ -79,4 +79,3 @@ func (s *HandshakeService) PerformHandshake() ([]*x509.Certificate, error) {
 	//fmt.Printf("received total %d bytes from server\n", len(fullResponse))
 	return ParseCertificates(fullResponse)
 }
-
