@@ -36,6 +36,7 @@ var splitCmd = &cobra.Command{
 func init() {
 	splitCmd.Flags().StringVarP(&splitOpts.Certificate, "cert", "c", "", "Certificate file")
 	splitCmd.Flags().StringVarP(&splitOpts.OutputDir, "output", "o", "", "Output directory")
+	splitCmd.Flags().StringVarP(&splitOpts.Label, "label", "l", "", "Label prefix (optional) to add to output files")
 	splitCmd.Flags().StringVarP(&splitOpts.Password, "password", "p", "", "Password (optional), used with pkcs12/pfx files)")
 	splitCmd.Flags().BoolVarP(&splitOpts.Verbose, "verbose", "v", false, "Verbose output")
 	splitCmd.Flags().BoolVarP(&splitOpts.KeyExtract, "key", "k", false, "Extract a key if present")
