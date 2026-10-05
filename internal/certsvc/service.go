@@ -634,17 +634,20 @@ func (c *CertificateService) Split(opts options.SplitOptions) ([]string, error) 
 
 	intermediateCount := 0
 	var commonName string
+	var labelPrefix string
 	for i, cert := range certs {
 		var fileName string
 
 		if i == 0 {
 			commonName = cert.Subject.CommonName
-			fileName = fmt.Sprintf("%s.pem", commonName)
+			labelPrefix = fmt.Sprintf("%s_%s", commonName, opts.Label)
+			fileName = fmt.Sprintf("%sclient.pem", labelPrefix)
 		} else if isSelfSigned(cert) {
-			fileName = "root.pem"
+			//fileName = "root.pem"
+			fileName = fmt.Sprintf("%sroot.pem", labelPrefix)
 		} else {
 			intermediateCount++
-			fileName = fmt.Sprintf("intermediate%02d.pem", intermediateCount)
+			fileName = fmt.Sprintf("%sintermediate%02d.pem", labelPrefix, intermediateCount)
 		}
 
 		outputPath := filepath.Join(opts.OutputDir, fileName)
